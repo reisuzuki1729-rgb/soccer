@@ -31,7 +31,7 @@
           window.lucide.createIcons();
         }
       }, [name]);
-      return <i data-lucide={name} class={className} {...props}></i>;
+      return <i data-lucide={name} className={className} {...props}></i>;
     };
 
     // 初期データ
@@ -41,7 +41,7 @@
     const INITIAL_GOALS = [];
 
     function SoccerNoteApp() {
-      // --- 💾 ローカルストレージフック ---
+      // --- ローカルストレージフック ---
       const usePersistentState = (key, initialValue) => {
         const [state, setState] = useState(() => {
           try {
@@ -482,7 +482,109 @@
 
               <div className="flex items-center space-x-2">
                 {role === 'student' ? (
-                  <button
+                  <div className="flex items-center space-x-2">
+                    {members.length > 0 && (
+                      <select
+                        value={currentStudentId}
+                        onChange={(e) => setCurrentStudentId(e.target.value)}
+                        className="bg-emerald-800 text-white text-xs font-bold border border-emerald-600 rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-amber-400"
+                      >
+                        {members.map(m => (
+                          <option key={m.id} value={m.id}>👤 {m.name} ({m.position})</option>
+                        ))}
+                      </select>
+                    )}
+                    <button
+                      onClick={() => setShowPasscodeModal(true)}
+                      className="text-xs bg-emerald-800 hover:bg-emerald-700 text-amber-300 font-bold px-3 py-1.5 rounded-lg border border-emerald-600 transition flex items-center"
+                    >
+                      <Icon name="lock" className="w-3.5 h-3.5 mr-1" />
+                      指導者モード
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs bg-amber-500 text-slate-900 font-bold px-2.5 py-1 rounded-full flex items-center">
+                      <Icon name="shield" className="w-3.5 h-3.5 mr-1" /> 指導者ログイン中
+                    </span>
+                    <button
+                      onClick={() => setRole('student')}
+                      className="text-xs bg-emerald-800 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-lg border border-emerald-600 transition"
+                    >
+                      選手モードへ
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </header>
+
+          {/* Navigation */}
+          <nav className="bg-white border-b border-slate-200 sticky top-[57px] z-20 shadow-sm overflow-x-auto">
+            <div className="max-w-4xl mx-auto px-2 flex text-xs font-medium">
+              <button
+                onClick={() => setActiveTab('notes')}
+                className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
+                  activeTab === 'notes' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Icon name="book-open" className="w-4 h-4 mr-1.5" />
+                {role === 'coach' ? 'ノート提出状況' : '自分の振り返り'}
+              </button>
+
+              {role === 'student' && (
+                <button
+                  onClick={() => setActiveTab('create')}
+                  className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
+                    activeTab === 'create' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Icon name="plus-circle" className="w-4 h-4 mr-1.5" />
+                  ノートを書く
+                </button>
+              )}
+
+              <button
+                onClick={() => setActiveTab('team_notes')}
+                className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
+                  activeTab === 'team_notes' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Icon name="users" className="w-4 h-4 mr-1.5" />
+                全員の振り返り・MOM
+              </button>
+
+              <button
+                onClick={() => setActiveTab('goals')}
+                className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
+                  activeTab === 'goals' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Icon name="target" className="w-4 h-4 mr-1.5" />
+                目標設定
+              </button>
+
+              <button
+                onClick={() => setActiveTab('dashboard')}
+                className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
+                  activeTab === 'dashboard' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Icon name="bar-chart-2" className="w-4 h-4 mr-1.5" />
+                分析・継続ランキング
+              </button>
+
+              <button
+                onClick={() => setActiveTab('match_manage')}
+                className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
+                  activeTab === 'match_manage' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Icon name="trophy" className="w-4 h-4 mr-1.5" />
+                試合管理 ({matches.length})
+              </button>
+
+              <button
                 onClick={() => { setActiveTab('members'); setShowAddMember(true); }}
                 className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
                   activeTab === 'members' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
