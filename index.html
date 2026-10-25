@@ -1,1981 +1,1953 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  BookOpen, 
-  Award, 
-  Calendar, 
-  MessageSquare, 
-  CheckCircle2, 
-  Clock, 
-  Activity, 
-  Plus, 
-  Search, 
-  Filter, 
-  Star, 
-  Send, 
-  Target, 
-  User, 
-  Shield, 
-  TrendingUp, 
-  Share2, 
-  Printer, 
-  UserPlus, 
-  Trash2, 
-  CornerDownRight,
-  Lock,
-  Unlock,
-  Users,
-  Trophy,
-  BarChart2,
-  Sliders,
-  FileText,
-  Save,
-  Flame,
-  Zap,
-  Sparkles
-} from 'lucide-react';
-
-// 初期データ（部員リストはクリアし、空からスタート）
-const INITIAL_MEMBERS = [];
-
-const INITIAL_MATCHES = [];
-
-const INITIAL_NOTES = [];
-
-const INITIAL_GOALS = [];
-
-export default function SoccerNoteApp() {
-  // --- 💾 ローカルストレージ（データ自動永続化）フック関数 ---
-  const usePersistentState = (key, initialValue) => {
-    const [state, setState] = useState(() => {
-      try {
-        const saved = localStorage.getItem(`soccer_note_${key}`);
-        return saved ? JSON.parse(saved) : initialValue;
-      } catch (e) {
-        console.error('Storage Read Error:', e);
-        return initialValue;
-      }
-    });
-
-    useEffect(() => {
-      try {
-        localStorage.setItem(`soccer_note_${key}`, JSON.stringify(state));
-      } catch (e) {
-        console.error('Storage Save Error:', e);
-      }
-    }, [key, state]);
-
-    return [state, setState];
-  };
-
-  // 永続化するアプリのメイン状態
-  const [members, setMembers] = usePersistentState('members', INITIAL_MEMBERS);
-  const [matches, setMatches] = usePersistentState('matches', INITIAL_MATCHES);
-  const [notes, setNotes] = usePersistentState('notes', INITIAL_NOTES);
-  const [goals, setGoals] = usePersistentState('goals', INITIAL_GOALS);
-
-  // 画面のナビゲーションや一時的状態
-  const [role, setRole] = useState('student'); // 'student' | 'coach'
-  const [isCoachAuthenticated, setIsCoachAuthenticated] = useState(false);
-  const [coachPasscode] = useState('1234');
-  const [inputPasscode, setInputPasscode] = useState('');
-  const [showPasscodeModal, setShowPasscodeModal] = useState(false);
-
-  const [currentStudentId, setCurrentStudentId] = useState(members[0]?.id || '');
-  const [activeTab, setActiveTab] = useState(members.length === 0 ? 'members' : 'notes'); // 部員がゼロなら管理画面へ誘導
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>サッカー部 振り返りノート</title>
   
-  const [filterType, setFilterType] = useState('all'); // 'all' | 'a_match' | 'b_match' | 'practice' | 'pending' | 'replied'
-  const [selectedStudentFilter, setSelectedStudentFilter] = useState('all');
-  const [teamSearchQuery, setTeamSearchQuery] = useState('');
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- React & ReactDOM CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  
+  <!-- Babel for JSX Compilation -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans antialiased">
+  <div id="root"></div>
 
-  // 試合登録（マネージャー/記録担当用）フォーム
-  const [newMatch, setNewMatch] = useState({
-    date: new Date().toISOString().split('T')[0],
-    category: 'A戦 (公式戦)',
-    opponent: '',
-    ourScore: 0,
-    opponentScore: 0,
-    formation: '4-3-3',
-    competition: '',
-    notes: ''
-  });
+  <script type="text/babel">
+    const { useState, useEffect } = React;
 
-  // ノート新規登録フォーム
-  const [newNote, setNewNote] = useState({
-    type: '試合',
-    category: 'A戦 (公式戦)',
-    title: '',
-    date: new Date().toISOString().split('T')[0],
-    condition: 3,
-    fatigue: 3,
-    sleepHours: 7.0,
-    theme: '',
-    goodPoints: '',
-    badPoints: '',
-    nextAction: '',
-    // 試合連携・個別対戦相手
-    selectedMatchId: '',
-    customOpponent: '',
-    minutesPlayed: 70,
-    goals: 0,
-    assists: 0,
-  });
-
-  // モーダル等
-  const [selectedNote, setSelectedNote] = useState(null);
-  const [replyText, setReplyText] = useState('');
-  const [replyRating, setReplyRating] = useState(5);
-  const [isMomCheck, setIsMomCheck] = useState(false);
-  const [coachName, setCoachName] = useState('監督（佐藤）');
-
-  const [replyToCoachNote, setReplyToCoachNote] = useState(null);
-  const [studentReplyText, setStudentReplyText] = useState('');
-
-  const [editingMember, setEditingMember] = useState({ name: '', grade: '1年', position: 'FW', number: '' });
-  const [showAddMember, setShowAddMember] = useState(members.length === 0);
-  const [currentGoal, setCurrentGoal] = useState({ yearGoal: '', monthGoal: '' });
-
-  // 選択中の生徒データ
-  const currentStudent = members.find(m => m.id === currentStudentId) || members[0] || null;
-
-  useEffect(() => {
-    if (members.length > 0 && !currentStudentId) {
-      setCurrentStudentId(members[0].id);
-    }
-  }, [members, currentStudentId]);
-
-  useEffect(() => {
-    if (!currentStudentId) return;
-    const existingGoal = goals.find(g => g.studentId === currentStudentId);
-    if (existingGoal) {
-      setCurrentGoal({ yearGoal: existingGoal.yearGoal, monthGoal: existingGoal.monthGoal });
-    } else {
-      setCurrentGoal({ yearGoal: '', monthGoal: '' });
-    }
-  }, [currentStudentId, goals]);
-
-  // 🔥 継続記録（ストリーク & 通算日数）計算ロジック
-  const calculateStreak = (studentId) => {
-    const studentNotes = notes.filter(n => n.studentId === studentId);
-    if (studentNotes.length === 0) return { currentStreak: 0, totalDays: 0 };
-
-    // 記録があるユニークな日付（降順ソート）
-    const uniqueDates = Array.from(new Set(studentNotes.map(n => n.date))).sort((a, b) => new Date(b) - new Date(a));
-    const totalDays = uniqueDates.length;
-
-    if (totalDays === 0) return { currentStreak: 0, totalDays: 0 };
-
-    let streak = 0;
-    const today = new Date().toISOString().split('T')[0];
-    const yesterdayDate = new Date();
-    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-    const yesterday = yesterdayDate.toISOString().split('T')[0];
-
-    // 最新の記録が今日または昨日でなければストリーク途切れ
-    const latestDateStr = uniqueDates[0];
-    if (latestDateStr !== today && latestDateStr !== yesterday) {
-      return { currentStreak: 0, totalDays };
-    }
-
-    streak = 1;
-    for (let i = 1; i < uniqueDates.length; i++) {
-      const prevDate = new Date(uniqueDates[i - 1]);
-      const currDate = new Date(uniqueDates[i]);
-      const diffTime = Math.abs(prevDate - currDate);
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-      if (diffDays === 1) {
-        streak++;
-      } else {
-        break;
-      }
-    }
-
-    return { currentStreak: streak, totalDays };
-  };
-
-  const studentStreakInfo = currentStudent ? calculateStreak(currentStudent.id) : { currentStreak: 0, totalDays: 0 };
-
-  // 試合が選択されたときノートのタイトルや初期日付を自動保管
-  const handleMatchSelect = (matchId) => {
-    if (!matchId) {
-      setNewNote(prev => ({ ...prev, selectedMatchId: '', customOpponent: '' }));
-      return;
-    }
-    const match = matches.find(m => m.id === matchId);
-    if (match) {
-      setNewNote(prev => ({
-        ...prev,
-        selectedMatchId: match.id,
-        category: match.category || 'A戦 (公式戦)',
-        date: match.date,
-        customOpponent: match.opponent,
-        title: `【${match.category || '試合'}】${match.competition || ''} vs ${match.opponent}`
-      }));
-    }
-  };
-
-  // ⚽ 新規試合の登録（マネージャー・誰かが1度書き込めばOK）
-  const handleCreateMatch = (e) => {
-    e.preventDefault();
-    if (!newMatch.opponent) {
-      alert('対戦相手を入力してください。');
-      return;
-    }
-
-    const created = {
-      id: `m_${Date.now()}`,
-      ...newMatch
+    // --- Lucide Icon コンポーネント用ヘルパー ---
+    const Icon = ({ name, className = "w-4 h-4", ...props }) => {
+      useEffect(() => {
+        if (window.lucide) {
+          window.lucide.createIcons();
+        }
+      }, [name]);
+      return <i data-lucide={name} class={className} {...props}></i>;
     };
 
-    setMatches([created, ...matches]);
-    setNewMatch({
-      date: new Date().toISOString().split('T')[0],
-      category: 'A戦 (公式戦)',
-      opponent: '',
-      ourScore: 0,
-      opponentScore: 0,
-      formation: '4-3-3',
-      competition: '',
-      notes: ''
-    });
-    alert('試合データ（A戦/B戦）を登録しました！部員は振り返り作成時にこの試合を選択できるようになります。');
-  };
+    // 初期データ
+    const INITIAL_MEMBERS = [];
+    const INITIAL_MATCHES = [];
+    const INITIAL_NOTES = [];
+    const INITIAL_GOALS = [];
 
-  // ノート送信
-  const handleCreateNote = (e) => {
-    e.preventDefault();
-    if (!currentStudent) {
-      alert('先に部員登録を行ってください。');
-      return;
-    }
-    if (!newNote.title || !newNote.goodPoints) {
-      alert('タイトルと「成果・良かった点」は必須です。');
-      return;
-    }
+    function SoccerNoteApp() {
+      // --- 💾 ローカルストレージフック ---
+      const usePersistentState = (key, initialValue) => {
+        const [state, setState] = useState(() => {
+          try {
+            const saved = localStorage.getItem(`soccer_note_${key}`);
+            return saved ? JSON.parse(saved) : initialValue;
+          } catch (e) {
+            console.error('Storage Read Error:', e);
+            return initialValue;
+          }
+        });
 
-    let matchInfo = {
-      matchId: '',
-      opponent: newNote.customOpponent || '',
-      ourScore: 0,
-      opponentScore: 0,
-      formation: ''
-    };
+        useEffect(() => {
+          try {
+            localStorage.setItem(`soccer_note_${key}`, JSON.stringify(state));
+          } catch (e) {
+            console.error('Storage Save Error:', e);
+          }
+        }, [key, state]);
 
-    if (newNote.type === '試合' && newNote.selectedMatchId) {
-      const m = matches.find(item => item.id === newNote.selectedMatchId);
-      if (m) {
-        matchInfo = {
-          matchId: m.id,
-          opponent: newNote.customOpponent || m.opponent,
-          ourScore: m.ourScore,
-          opponentScore: m.opponentScore,
-          formation: m.formation
-        };
-      }
-    }
-
-    const created = {
-      id: `n_${Date.now()}`,
-      studentId: currentStudent.id,
-      studentName: currentStudent.name,
-      ...newNote,
-      ...matchInfo,
-      coachComment: '',
-      coachName: '',
-      coachRating: 0,
-      isMom: false,
-      commentDate: '',
-      studentReply: '',
-      replyDate: '',
-      status: 'pending'
-    };
-
-    setNotes([created, ...notes]);
-    setActiveTab('notes');
-
-    // リセット
-    setNewNote({
-      type: '試合',
-      category: 'A戦 (公式戦)',
-      title: '',
-      date: new Date().toISOString().split('T')[0],
-      condition: 3,
-      fatigue: 3,
-      sleepHours: 7.0,
-      theme: '',
-      goodPoints: '',
-      badPoints: '',
-      nextAction: '',
-      selectedMatchId: '',
-      customOpponent: '',
-      minutesPlayed: 70,
-      goals: 0,
-      assists: 0,
-    });
-  };
-
-  // パスコード検証
-  const handleVerifyPasscode = (e) => {
-    e.preventDefault();
-    if (inputPasscode === coachPasscode) {
-      setIsCoachAuthenticated(true);
-      setRole('coach');
-      setShowPasscodeModal(false);
-      setInputPasscode('');
-      setActiveTab('notes');
-    } else {
-      alert('パスコードが正しくありません。（初期パスコード: 1234）');
-    }
-  };
-
-  // 監督返信
-  const handleSendReply = () => {
-    if (!replyText.trim()) return;
-
-    const updatedNotes = notes.map(note => {
-      if (note.id === selectedNote.id) {
-        return {
-          ...note,
-          coachComment: replyText,
-          coachName: coachName,
-          coachRating: replyRating,
-          isMom: isMomCheck,
-          commentDate: new Date().toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }),
-          status: 'replied'
-        };
-      }
-      return note;
-    });
-
-    setNotes(updatedNotes);
-    setSelectedNote(null);
-    setReplyText('');
-    setIsMomCheck(false);
-  };
-
-  // 選手返答
-  const handleSendStudentReply = () => {
-    if (!studentReplyText.trim()) return;
-
-    const updatedNotes = notes.map(note => {
-      if (note.id === replyToCoachNote.id) {
-        return {
-          ...note,
-          studentReply: studentReplyText,
-          replyDate: new Date().toLocaleString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-        };
-      }
-      return note;
-    });
-
-    setNotes(updatedNotes);
-    setReplyToCoachNote(null);
-    setStudentReplyText('');
-  };
-
-  // 目標保存
-  const handleSaveGoal = (e) => {
-    e.preventDefault();
-    if (!currentStudentId) return;
-
-    const updated = goals.map(g => {
-      if (g.studentId === currentStudentId) {
-        return { ...g, yearGoal: currentGoal.yearGoal, monthGoal: currentGoal.monthGoal, updatedAt: new Date().toISOString().split('T')[0] };
-      }
-      return g;
-    });
-
-    if (!goals.some(g => g.studentId === currentStudentId)) {
-      updated.push({
-        id: `g_${Date.now()}`,
-        studentId: currentStudentId,
-        yearGoal: currentGoal.yearGoal,
-        monthGoal: currentGoal.monthGoal,
-        updatedAt: new Date().toISOString().split('T')[0]
-      });
-    }
-
-    setGoals(updated);
-    alert('目標を保存・更新しました！');
-  };
-
-  // 部員追加
-  const handleAddMember = (e) => {
-    e.preventDefault();
-    if (!editingMember.name) return;
-    
-    const newM = {
-      id: `m_${Date.now()}`,
-      name: editingMember.name,
-      grade: editingMember.grade,
-      position: editingMember.position,
-      number: parseInt(editingMember.number) || 0
-    };
-    
-    const updatedMembers = [...members, newM];
-    setMembers(updatedMembers);
-    setCurrentStudentId(newM.id);
-    setEditingMember({ name: '', grade: '1年', position: 'FW', number: '' });
-    setShowAddMember(false);
-  };
-
-  // 部員削除
-  const handleDeleteMember = (id) => {
-    if (window.confirm('この部員を削除しますか？')) {
-      const nextMembers = members.filter(m => m.id !== id);
-      setMembers(nextMembers);
-      if (currentStudentId === id) setCurrentStudentId(nextMembers[0]?.id || '');
-    }
-  };
-
-  // 自分のノートフィルター
-  const myFilteredNotes = notes.filter(note => {
-    if (role === 'student' && currentStudentId && note.studentId !== currentStudentId) return false;
-    if (role === 'coach' && selectedStudentFilter !== 'all' && note.studentId !== selectedStudentFilter) return false;
-    if (filterType === 'pending') return note.status === 'pending';
-    if (filterType === 'replied') return note.status === 'replied';
-    if (filterType === 'a_match') return note.category?.includes('A戦');
-    if (filterType === 'b_match') return note.category?.includes('B戦');
-    if (filterType === 'practice') return note.type === '練習';
-    return true;
-  });
-
-  // チーム全員のノートフィルター
-  const teamFilteredNotes = notes.filter(note => {
-    if (selectedStudentFilter !== 'all' && note.studentId !== selectedStudentFilter) return false;
-    if (filterType === 'a_match' && !note.category?.includes('A戦')) return false;
-    if (filterType === 'b_match' && !note.category?.includes('B戦')) return false;
-    if (teamSearchQuery.trim()) {
-      const q = teamSearchQuery.toLowerCase();
-      return (
-        note.studentName.toLowerCase().includes(q) ||
-        note.title.toLowerCase().includes(q) ||
-        (note.opponent && note.opponent.toLowerCase().includes(q)) ||
-        note.goodPoints.toLowerCase().includes(q) ||
-        note.theme.toLowerCase().includes(q)
-      );
-    }
-    return true;
-  });
-
-  // スタッツ計算（継続ストリークも含める）
-  const calculateStats = () => {
-    const totalGoals = notes.reduce((acc, n) => acc + (n.goals || 0), 0);
-    const totalAssists = notes.reduce((acc, n) => acc + (n.assists || 0), 0);
-    const totalMoms = notes.filter(n => n.isMom).length;
-    
-    const studentStats = members.map(m => {
-      const studentNotes = notes.filter(n => n.studentId === m.id);
-      const goalsCount = studentNotes.reduce((acc, n) => acc + (n.goals || 0), 0);
-      const assistsCount = studentNotes.reduce((acc, n) => acc + (n.assists || 0), 0);
-      const momsCount = studentNotes.filter(n => n.isMom).length;
-      const { currentStreak, totalDays } = calculateStreak(m.id);
-
-      return {
-        id: m.id,
-        name: m.name,
-        position: m.position,
-        goals: goalsCount,
-        assists: assistsCount,
-        moms: momsCount,
-        currentStreak,
-        totalDays
+        return [state, setState];
       };
-    }).sort((a, b) => b.currentStreak - a.currentStreak || (b.moms * 10 + b.goals) - (a.moms * 10 + a.goals));
 
-    return { totalGoals, totalAssists, totalMoms, matchCount: matches.length, studentStats };
-  };
+      const [members, setMembers] = usePersistentState('members', INITIAL_MEMBERS);
+      const [matches, setMatches] = usePersistentState('matches', INITIAL_MATCHES);
+      const [notes, setNotes] = usePersistentState('notes', INITIAL_NOTES);
+      const [goals, setGoals] = usePersistentState('goals', INITIAL_GOALS);
 
-  const stats = calculateStats();
+      const [role, setRole] = useState('student');
+      const [isCoachAuthenticated, setIsCoachAuthenticated] = useState(false);
+      const [coachPasscode] = useState('1234');
+      const [inputPasscode, setInputPasscode] = useState('');
+      const [showPasscodeModal, setShowPasscodeModal] = useState(false);
 
-  return (
-    <div className="min-h-screen bg-slate-100 text-slate-800 font-sans flex flex-col antialiased">
-      {/* ⚽ ヘッダーナビゲーション */}
-      <header className="bg-emerald-900 text-white sticky top-0 z-30 shadow-md border-b border-emerald-800">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
-          <div className="flex items-center space-x-2">
-            <div className="p-2 bg-emerald-700 rounded-lg shadow-inner">
-              <Activity className="w-5 h-5 text-amber-400" />
-            </div>
-            <div>
-              <h1 className="font-black text-lg tracking-wide flex items-center gap-1.5">
-                サッカー部 振り返りノート
-              </h1>
-              <p className="text-[10px] text-emerald-200">サッカーノート＆指導者コミュニケーション</p>
-            </div>
-          </div>
+      const [currentStudentId, setCurrentStudentId] = useState(members[0]?.id || '');
+      const [activeTab, setActiveTab] = useState(members.length === 0 ? 'members' : 'notes');
+      
+      const [filterType, setFilterType] = useState('all');
+      const [selectedStudentFilter, setSelectedStudentFilter] = useState('all');
+      const [teamSearchQuery, setTeamSearchQuery] = useState('');
 
-          <div className="flex items-center space-x-2">
-            {role === 'student' ? (
-              <button
-                onClick={() => {
-                  if (isCoachAuthenticated) {
-                    setRole('coach');
-                    setActiveTab('notes');
-                  } else {
-                    setShowPasscodeModal(true);
-                  }
-                }}
-                className="bg-emerald-800 hover:bg-emerald-700 text-emerald-100 text-xs px-3 py-1.5 rounded-lg font-bold flex items-center space-x-1 border border-emerald-700 transition"
-              >
-                <Lock className="w-3.5 h-3.5 mr-1" /> 監督・コーチモードへ
-              </button>
-            ) : (
-              <button
-                onClick={() => setRole('student')}
-                className="bg-amber-500 hover:bg-amber-600 text-slate-900 text-xs px-3 py-1.5 rounded-lg font-bold flex items-center space-x-1 shadow transition"
-              >
-                <User className="w-3.5 h-3.5 mr-1" /> 選手モードに戻る
-              </button>
-            )}
-          </div>
-        </div>
+      const [newMatch, setNewMatch] = useState({
+        date: new Date().toISOString().split('T')[0],
+        category: 'A戦 (公式戦)',
+        opponent: '',
+        ourScore: 0,
+        opponentScore: 0,
+        formation: '4-3-3',
+        competition: '',
+        notes: ''
+      });
 
-        {/* 選手切り替えバー & 🔥 継続日数カウンター */}
-        {role === 'student' && (
-          <div className="bg-emerald-800 px-4 py-2 border-t border-emerald-600/50">
-            <div className="max-w-4xl mx-auto flex items-center justify-between text-xs flex-wrap gap-2">
+      const [newNote, setNewNote] = useState({
+        type: '試合',
+        category: 'A戦 (公式戦)',
+        title: '',
+        date: new Date().toISOString().split('T')[0],
+        condition: 3,
+        fatigue: 3,
+        sleepHours: 7.0,
+        theme: '',
+        goodPoints: '',
+        badPoints: '',
+        nextAction: '',
+        selectedMatchId: '',
+        customOpponent: '',
+        minutesPlayed: 70,
+        goals: 0,
+        assists: 0,
+      });
+
+      const [selectedNote, setSelectedNote] = useState(null);
+      const [replyText, setReplyText] = useState('');
+      const [replyRating, setReplyRating] = useState(5);
+      const [isMomCheck, setIsMomCheck] = useState(false);
+      const [coachName, setCoachName] = useState('監督（佐藤）');
+
+      const [replyToCoachNote, setReplyToCoachNote] = useState(null);
+      const [studentReplyText, setStudentReplyText] = useState('');
+
+      const [editingMember, setEditingMember] = useState({ name: '', grade: '1年', position: 'FW', number: '' });
+      const [showAddMember, setShowAddMember] = useState(members.length === 0);
+      const [currentGoal, setCurrentGoal] = useState({ yearGoal: '', monthGoal: '' });
+
+      const currentStudent = members.find(m => m.id === currentStudentId) || members[0] || null;
+
+      useEffect(() => {
+        if (members.length > 0 && !currentStudentId) {
+          setCurrentStudentId(members[0].id);
+        }
+      }, [members, currentStudentId]);
+
+      useEffect(() => {
+        if (!currentStudentId) return;
+        const existingGoal = goals.find(g => g.studentId === currentStudentId);
+        if (existingGoal) {
+          setCurrentGoal({ yearGoal: existingGoal.yearGoal, monthGoal: existingGoal.monthGoal });
+        } else {
+          setCurrentGoal({ yearGoal: '', monthGoal: '' });
+        }
+      }, [currentStudentId, goals]);
+
+      useEffect(() => {
+        if (window.lucide) {
+          window.lucide.createIcons();
+        }
+      });
+
+      // ストリーク計算
+      const calculateStreak = (studentId) => {
+        const studentNotes = notes.filter(n => n.studentId === studentId);
+        if (studentNotes.length === 0) return { currentStreak: 0, totalDays: 0 };
+
+        const uniqueDates = Array.from(new Set(studentNotes.map(n => n.date))).sort((a, b) => new Date(b) - new Date(a));
+        const totalDays = uniqueDates.length;
+
+        if (totalDays === 0) return { currentStreak: 0, totalDays: 0 };
+
+        let streak = 0;
+        const today = new Date().toISOString().split('T')[0];
+        const yesterdayDate = new Date();
+        yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+        const yesterday = yesterdayDate.toISOString().split('T')[0];
+
+        const latestDateStr = uniqueDates[0];
+        if (latestDateStr !== today && latestDateStr !== yesterday) {
+          return { currentStreak: 0, totalDays };
+        }
+
+        streak = 1;
+        for (let i = 1; i < uniqueDates.length; i++) {
+          const prevDate = new Date(uniqueDates[i - 1]);
+          const currDate = new Date(uniqueDates[i]);
+          const diffTime = Math.abs(prevDate - currDate);
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+          if (diffDays === 1) {
+            streak++;
+          } else {
+            break;
+          }
+        }
+
+        return { currentStreak: streak, totalDays };
+      };
+
+      const studentStreakInfo = currentStudent ? calculateStreak(currentStudent.id) : { currentStreak: 0, totalDays: 0 };
+
+      const handleMatchSelect = (matchId) => {
+        if (!matchId) {
+          setNewNote(prev => ({ ...prev, selectedMatchId: '', customOpponent: '' }));
+          return;
+        }
+        const match = matches.find(m => m.id === matchId);
+        if (match) {
+          setNewNote(prev => ({
+            ...prev,
+            selectedMatchId: match.id,
+            category: match.category || 'A戦 (公式戦)',
+            date: match.date,
+            customOpponent: match.opponent,
+            title: `【${match.category || '試合'}】${match.competition || ''} vs ${match.opponent}`
+          }));
+        }
+      };
+
+      const handleCreateMatch = (e) => {
+        e.preventDefault();
+        if (!newMatch.opponent) {
+          alert('対戦相手を入力してください。');
+          return;
+        }
+
+        const created = { id: `m_${Date.now()}`, ...newMatch };
+        setMatches([created, ...matches]);
+        setNewMatch({
+          date: new Date().toISOString().split('T')[0],
+          category: 'A戦 (公式戦)',
+          opponent: '',
+          ourScore: 0,
+          opponentScore: 0,
+          formation: '4-3-3',
+          competition: '',
+          notes: ''
+        });
+        alert('試合データを登録しました！');
+      };
+
+      const handleCreateNote = (e) => {
+        e.preventDefault();
+        if (!currentStudent) {
+          alert('先に部員登録を行ってください。');
+          return;
+        }
+        if (!newNote.title || !newNote.goodPoints) {
+          alert('タイトルと「成果・良かった点」は必須です。');
+          return;
+        }
+
+        let matchInfo = {
+          matchId: '',
+          opponent: newNote.customOpponent || '',
+          ourScore: 0,
+          opponentScore: 0,
+          formation: ''
+        };
+
+        if (newNote.type === '試合' && newNote.selectedMatchId) {
+          const m = matches.find(item => item.id === newNote.selectedMatchId);
+          if (m) {
+            matchInfo = {
+              matchId: m.id,
+              opponent: newNote.customOpponent || m.opponent,
+              ourScore: m.ourScore,
+              opponentScore: m.opponentScore,
+              formation: m.formation
+            };
+          }
+        }
+
+        const created = {
+          id: `n_${Date.now()}`,
+          studentId: currentStudent.id,
+          studentName: currentStudent.name,
+          ...newNote,
+          ...matchInfo,
+          coachComment: '',
+          coachName: '',
+          coachRating: 0,
+          isMom: false,
+          commentDate: '',
+          studentReply: '',
+          replyDate: '',
+          status: 'pending'
+        };
+
+        setNotes([created, ...notes]);
+        setActiveTab('notes');
+        setNewNote({
+          type: '試合',
+          category: 'A戦 (公式戦)',
+          title: '',
+          date: new Date().toISOString().split('T')[0],
+          condition: 3,
+          fatigue: 3,
+          sleepHours: 7.0,
+          theme: '',
+          goodPoints: '',
+          badPoints: '',
+          nextAction: '',
+          selectedMatchId: '',
+          customOpponent: '',
+          minutesPlayed: 70,
+          goals: 0,
+          assists: 0,
+        });
+      };
+
+      const handleVerifyPasscode = (e) => {
+        e.preventDefault();
+        if (inputPasscode === coachPasscode) {
+          setIsCoachAuthenticated(true);
+          setRole('coach');
+          setShowPasscodeModal(false);
+          setInputPasscode('');
+          setActiveTab('notes');
+        } else {
+          alert('パスコードが正しくありません。（初期コード: 1234）');
+        }
+      };
+
+      const handleSendReply = () => {
+        if (!replyText.trim()) return;
+
+        const updatedNotes = notes.map(note => {
+          if (note.id === selectedNote.id) {
+            return {
+              ...note,
+              coachComment: replyText,
+              coachName: coachName,
+              coachRating: replyRating,
+              isMom: isMomCheck,
+              commentDate: new Date().toLocaleString('ja-JP'),
+              status: 'replied'
+            };
+          }
+          return note;
+        });
+
+        setNotes(updatedNotes);
+        setSelectedNote(null);
+        setReplyText('');
+        setIsMomCheck(false);
+      };
+
+      const handleSendStudentReply = () => {
+        if (!studentReplyText.trim()) return;
+
+        const updatedNotes = notes.map(note => {
+          if (note.id === replyToCoachNote.id) {
+            return {
+              ...note,
+              studentReply: studentReplyText,
+              replyDate: new Date().toLocaleString('ja-JP')
+            };
+          }
+          return note;
+        });
+
+        setNotes(updatedNotes);
+        setReplyToCoachNote(null);
+        setStudentReplyText('');
+      };
+
+      const handleSaveGoal = (e) => {
+        e.preventDefault();
+        if (!currentStudentId) return;
+
+        const updated = goals.map(g => {
+          if (g.studentId === currentStudentId) {
+            return { ...g, yearGoal: currentGoal.yearGoal, monthGoal: currentGoal.monthGoal, updatedAt: new Date().toISOString().split('T')[0] };
+          }
+          return g;
+        });
+
+        if (!goals.some(g => g.studentId === currentStudentId)) {
+          updated.push({
+            id: `g_${Date.now()}`,
+            studentId: currentStudentId,
+            yearGoal: currentGoal.yearGoal,
+            monthGoal: currentGoal.monthGoal,
+            updatedAt: new Date().toISOString().split('T')[0]
+          });
+        }
+
+        setGoals(updated);
+        alert('目標を保存しました！');
+      };
+
+      const handleAddMember = (e) => {
+        e.preventDefault();
+        if (!editingMember.name) return;
+        
+        const newM = {
+          id: `m_${Date.now()}`,
+          name: editingMember.name,
+          grade: editingMember.grade,
+          position: editingMember.position,
+          number: parseInt(editingMember.number) || 0
+        };
+        
+        setMembers([...members, newM]);
+        setCurrentStudentId(newM.id);
+        setEditingMember({ name: '', grade: '1年', position: 'FW', number: '' });
+        setShowAddMember(false);
+      };
+
+      const handleDeleteMember = (id) => {
+        if (window.confirm('この部員を削除しますか？')) {
+          const nextMembers = members.filter(m => m.id !== id);
+          setMembers(nextMembers);
+          if (currentStudentId === id) setCurrentStudentId(nextMembers[0]?.id || '');
+        }
+      };
+
+      const myFilteredNotes = notes.filter(note => {
+        if (role === 'student' && currentStudentId && note.studentId !== currentStudentId) return false;
+        if (role === 'coach' && selectedStudentFilter !== 'all' && note.studentId !== selectedStudentFilter) return false;
+        if (filterType === 'pending') return note.status === 'pending';
+        if (filterType === 'replied') return note.status === 'replied';
+        if (filterType === 'a_match') return note.category?.includes('A戦');
+        if (filterType === 'b_match') return note.category?.includes('B戦');
+        if (filterType === 'practice') return note.type === '練習';
+        return true;
+      });
+
+      const teamFilteredNotes = notes.filter(note => {
+        if (selectedStudentFilter !== 'all' && note.studentId !== selectedStudentFilter) return false;
+        if (filterType === 'a_match' && !note.category?.includes('A戦')) return false;
+        if (filterType === 'b_match' && !note.category?.includes('B戦')) return false;
+        if (teamSearchQuery.trim()) {
+          const q = teamSearchQuery.toLowerCase();
+          return (
+            note.studentName.toLowerCase().includes(q) ||
+            note.title.toLowerCase().includes(q) ||
+            (note.opponent && note.opponent.toLowerCase().includes(q)) ||
+            note.goodPoints.toLowerCase().includes(q) ||
+            note.theme.toLowerCase().includes(q)
+          );
+        }
+        return true;
+      });
+
+      const calculateStats = () => {
+        const totalGoals = notes.reduce((acc, n) => acc + (n.goals || 0), 0);
+        const totalAssists = notes.reduce((acc, n) => acc + (n.assists || 0), 0);
+        const totalMoms = notes.filter(n => n.isMom).length;
+        
+        const studentStats = members.map(m => {
+          const studentNotes = notes.filter(n => n.studentId === m.id);
+          const goalsCount = studentNotes.reduce((acc, n) => acc + (n.goals || 0), 0);
+          const assistsCount = studentNotes.reduce((acc, n) => acc + (n.assists || 0), 0);
+          const momsCount = studentNotes.filter(n => n.isMom).length;
+          const { currentStreak, totalDays } = calculateStreak(m.id);
+
+          return {
+            id: m.id,
+            name: m.name,
+            position: m.position,
+            goals: goalsCount,
+            assists: assistsCount,
+            moms: momsCount,
+            currentStreak,
+            totalDays
+          };
+        }).sort((a, b) => b.currentStreak - a.currentStreak || (b.moms * 10 + b.goals) - (a.moms * 10 + a.goals));
+
+        return { totalGoals, totalAssists, totalMoms, matchCount: matches.length, studentStats };
+      };
+
+      const stats = calculateStats();
+
+      return (
+        <div className="min-h-screen flex flex-col antialiased">
+          {/* Header */}
+          <header className="bg-emerald-900 text-white sticky top-0 z-30 shadow-md border-b border-emerald-800">
+            <div className="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
               <div className="flex items-center space-x-2">
-                <span className="text-emerald-200 font-medium">現在の記入者:</span>
-                {members.length > 0 ? (
-                  <select
-                    value={currentStudentId}
-                    onChange={(e) => setCurrentStudentId(e.target.value)}
-                    className="bg-emerald-900 border border-emerald-600 text-white rounded px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-amber-400 font-bold"
+                <div className="p-2 bg-emerald-700 rounded-lg shadow-inner">
+                  <Icon name="activity" className="w-5 h-5 text-amber-400" />
+                </div>
+                <div>
+                  <h1 className="font-black text-lg tracking-wide flex items-center gap-1.5">
+                    サッカー部 振り返りノート
+                  </h1>
+                  <p className="text-[10px] text-emerald-200">サッカーノート＆指導者コミュニケーション</p>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                {role === 'student' ? (
+                  <button
+                    onClick={() => {
+                      if (isCoachAuthenticated) {
+                        setRole('coach');
+                        setActiveTab('notes');
+                      } else {
+                        setShowPasscodeModal(true);
+                      }
+                    }}
+                    className="bg-emerald-800 hover:bg-emerald-700 text-emerald-100 text-xs px-3 py-1.5 rounded-lg font-bold flex items-center space-x-1 border border-emerald-700 transition"
                   >
-                    {members.map(m => (
-                      <option key={m.id} value={m.id}>
-                        {m.name} ({m.position === 'MG' ? 'マネージャー' : `${m.grade} / ${m.position} #${m.number}`})
-                      </option>
-                    ))}
-                  </select>
+                    <Icon name="lock" className="w-3.5 h-3.5 mr-1" /> 監督・コーチモードへ
+                  </button>
                 ) : (
-                  <span className="text-amber-300 font-bold">※部員が未登録です</span>
+                  <button
+                    onClick={() => setRole('student')}
+                    className="bg-amber-500 hover:bg-amber-600 text-slate-900 text-xs px-3 py-1.5 rounded-lg font-bold flex items-center space-x-1 shadow transition"
+                  >
+                    <Icon name="user" className="w-3.5 h-3.5 mr-1" /> 選手モードに戻る
+                  </button>
                 )}
               </div>
-
-              {currentStudent && (
-                <div className="flex items-center space-x-3 bg-emerald-900/80 px-3 py-1 rounded-full border border-emerald-700">
-                  <div className="flex items-center space-x-1 text-amber-400 font-bold" title="連続提出日数">
-                    <Flame className="w-4 h-4 fill-amber-400 animate-pulse text-amber-500" />
-                    <span>{studentStreakInfo.currentStreak}日 連続継続中！</span>
-                  </div>
-                  <span className="text-emerald-400">|</span>
-                  <div className="text-emerald-200 text-[11px]" title="通算記入日数">
-                    通算 <b>{studentStreakInfo.totalDays}</b> 日間提出
-                  </div>
-                </div>
-              )}
-
-              <div className="flex items-center space-x-3">
-                <button
-                  onClick={() => { setActiveTab('members'); setShowAddMember(true); }}
-                  className="text-emerald-200 hover:text-white underline flex items-center text-[11px]"
-                >
-                  <UserPlus className="w-3 h-3 mr-1" /> 部員追加・編集
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </header>
-
-      {/* 📌 タブナビゲーション */}
-      <nav className="bg-white border-b border-slate-200 sticky top-[57px] z-20 shadow-sm print:hidden">
-        <div className="max-w-4xl mx-auto px-2 flex overflow-x-auto text-sm font-medium">
-          <button
-            onClick={() => setActiveTab('notes')}
-            className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
-              activeTab === 'notes' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <BookOpen className="w-4 h-4 mr-1.5" />
-            {role === 'student' ? '自分のノート' : '監督レビュー一覧'}
-            {role === 'coach' && (
-              <span className="ml-1.5 bg-amber-500 text-white text-xs px-1.5 py-0.5 rounded-full font-normal">
-                {notes.filter(n => n.status === 'pending').length}未読
-              </span>
-            )}
-          </button>
-
-          {role === 'student' && (
-            <button
-              onClick={() => setActiveTab('create')}
-              className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
-                activeTab === 'create' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <Plus className="w-4 h-4 mr-1.5" />
-              ノートを書く
-            </button>
-          )}
-
-          <button
-            onClick={() => setActiveTab('team_notes')}
-            className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
-              activeTab === 'team_notes' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <Users className="w-4 h-4 mr-1.5" />
-            全員の振り返り・MOM共有
-          </button>
-
-          <button
-            onClick={() => setActiveTab('goals')}
-            className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
-              activeTab === 'goals' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <Target className="w-4 h-4 mr-1.5" />
-            目標設定
-          </button>
-
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
-              activeTab === 'dashboard' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <BarChart2 className="w-4 h-4 mr-1.5" />
-            継続率・スタッツ分析
-          </button>
-
-          <button
-            onClick={() => setActiveTab('match_manage')}
-            className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
-              activeTab === 'match_manage' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <Trophy className="w-4 h-4 mr-1.5 text-amber-500" />
-            試合の事前登録（A戦/B戦）
-          </button>
-
-          <button
-            onClick={() => setActiveTab('members')}
-            className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
-              activeTab === 'members' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <UserPlus className="w-4 h-4 mr-1.5" />
-            部員登録・管理 ({members.length})
-          </button>
-        </div>
-      </nav>
-
-      {/* メインエリア */}
-      <main className="max-w-4xl mx-auto px-4 py-6 flex-1 w-full">
-
-        {/* 初期部員未登録時のウェルカムガイド */}
-        {members.length === 0 && activeTab !== 'members' && (
-          <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-6 text-center space-y-3 mb-6 shadow-sm">
-            <UserPlus className="w-10 h-10 text-amber-600 mx-auto" />
-            <h3 className="font-bold text-base text-amber-900">まずは部員（自分や選手）を登録しましょう！</h3>
-            <p className="text-xs text-amber-800 max-w-md mx-auto">
-              まだ部員が登録されていません。「部員追加」から登録すると、ノートの作成や振り返りの記録を開始できます。
-            </p>
-            <button
-              onClick={() => { setActiveTab('members'); setShowAddMember(true); }}
-              className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow transition inline-flex items-center"
-            >
-              <UserPlus className="w-4 h-4 mr-1.5" /> 今すぐ最初の部員を追加する
-            </button>
-          </div>
-        )}
-
-        {/* 1. ノート一覧 */}
-        {activeTab === 'notes' && (
-          <div className="space-y-4">
-            {/* 🔥 継続バナー */}
-            {currentStudent && (
-              <div className="bg-gradient-to-r from-emerald-800 to-emerald-900 text-white p-4 rounded-xl shadow border border-emerald-700 flex justify-between items-center">
-                <div className="flex items-center space-x-3">
-                  <div className="p-2.5 bg-amber-500/20 rounded-xl border border-amber-400/30">
-                    <Flame className="w-7 h-7 text-amber-400 fill-amber-400 animate-bounce" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-sm text-amber-300 flex items-center">
-                      {currentStudent.name} さんのノート継続ストリーク
-                    </h3>
-                    <p className="text-xs text-emerald-100 mt-0.5">
-                      継続は力なり！毎日の振り返りが劇的なサッカー上達につながります。
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <span className="text-2xl font-black text-amber-400 font-mono">{studentStreakInfo.currentStreak}</span>
-                  <span className="text-xs text-emerald-200 block font-bold">日連続</span>
-                </div>
-              </div>
-            )}
-
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row gap-3 justify-between items-center">
-              <div className="flex items-center space-x-2 w-full sm:w-auto flex-wrap gap-y-1.5">
-                <Filter className="w-4 h-4 text-slate-400" />
-                <span className="text-xs font-bold text-slate-500">絞り込み:</span>
-                <button
-                  onClick={() => setFilterType('all')}
-                  className={`px-3 py-1 rounded-full text-xs transition ${
-                    filterType === 'all' ? 'bg-slate-800 text-white font-bold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  すべて
-                </button>
-                <button
-                  onClick={() => setFilterType('a_match')}
-                  className={`px-3 py-1 rounded-full text-xs transition ${
-                    filterType === 'a_match' ? 'bg-rose-600 text-white font-bold' : 'bg-rose-50 text-rose-700 border border-rose-200'
-                  }`}
-                >
-                  ⚽ A戦
-                </button>
-                <button
-                  onClick={() => setFilterType('b_match')}
-                  className={`px-3 py-1 rounded-full text-xs transition ${
-                    filterType === 'b_match' ? 'bg-indigo-600 text-white font-bold' : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                  }`}
-                >
-                  ⚽ B戦
-                </button>
-                <button
-                  onClick={() => setFilterType('practice')}
-                  className={`px-3 py-1 rounded-full text-xs transition ${
-                    filterType === 'practice' ? 'bg-blue-600 text-white font-bold' : 'bg-blue-50 text-blue-700 border border-blue-200'
-                  }`}
-                >
-                  🏃 練習
-                </button>
-                <button
-                  onClick={() => setFilterType('pending')}
-                  className={`px-3 py-1 rounded-full text-xs transition flex items-center ${
-                    filterType === 'pending' ? 'bg-amber-500 text-white font-bold' : 'bg-amber-50 text-amber-700 border border-amber-200'
-                  }`}
-                >
-                  <Clock className="w-3 h-3 mr-1" /> 未返信
-                </button>
-              </div>
-
-              {role === 'coach' && (
-                <div className="w-full sm:w-auto flex items-center space-x-2">
-                  <span className="text-xs text-slate-500 whitespace-nowrap">部員選択:</span>
-                  <select
-                    value={selectedStudentFilter}
-                    onChange={(e) => setSelectedStudentFilter(e.target.value)}
-                    className="text-xs bg-slate-50 border border-slate-300 rounded px-2 py-1 text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-full"
-                  >
-                    <option value="all">全員を表示</option>
-                    {members.map(m => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
             </div>
 
-            {myFilteredNotes.length === 0 ? (
-              <div className="bg-white p-12 text-center rounded-xl border border-dashed border-slate-300">
-                <BookOpen className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                <p className="text-slate-500 font-medium">該当する振り返りノートがありません。</p>
-              </div>
-            ) : (
-              myFilteredNotes.map(note => (
-                <div key={note.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition relative">
-                  {note.isMom && (
-                    <div className="bg-gradient-to-r from-amber-500 to-yellow-400 text-white font-bold text-xs px-3 py-1 flex items-center justify-between shadow-inner">
-                      <span className="flex items-center"><Trophy className="w-3.5 h-3.5 mr-1" /> 👑 本日の M.O.M (Man of the Match) に選出されました！</span>
-                      <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded">チーム全体に公開中</span>
+            {role === 'student' && (
+              <div className="bg-emerald-800 px-4 py-2 border-t border-emerald-600/50">
+                <div className="max-w-4xl mx-auto flex items-center justify-between text-xs flex-wrap gap-2">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-emerald-200 font-medium">現在の記入者:</span>
+                    {members.length > 0 ? (
+                      <select
+                        value={currentStudentId}
+                        onChange={(e) => setCurrentStudentId(e.target.value)}
+                        className="bg-emerald-900 border border-emerald-600 text-white rounded px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-amber-400 font-bold"
+                      >
+                        {members.map(m => (
+                          <option key={m.id} value={m.id}>
+                            {m.name} ({m.position === 'MG' ? 'マネージャー' : `${m.grade} / ${m.position} #${m.number}`})
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-amber-300 font-bold">※部員が未登録です</span>
+                    )}
+                  </div>
+
+                  {currentStudent && (
+                    <div className="flex items-center space-x-3 bg-emerald-900/80 px-3 py-1 rounded-full border border-emerald-700">
+                      <div className="flex items-center space-x-1 text-amber-400 font-bold">
+                        <Icon name="flame" className="w-4 h-4 text-amber-400 fill-amber-400 animate-pulse" />
+                        <span>{studentStreakInfo.currentStreak}日 連続継続中！</span>
+                      </div>
+                      <span className="text-emerald-400">|</span>
+                      <div className="text-emerald-200 text-[11px]">
+                        通算 <b>{studentStreakInfo.totalDays}</b> 日間提出
+                      </div>
                     </div>
                   )}
 
-                  <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-start gap-2">
-                    <div>
-                      <div className="flex items-center space-x-2 mb-1 flex-wrap gap-y-1">
-                        <span className={`px-2 py-0.5 rounded text-xs font-bold ${
-                          note.category?.includes('A戦') ? 'bg-rose-100 text-rose-700 border border-rose-200' :
-                          note.category?.includes('B戦') ? 'bg-indigo-100 text-indigo-700 border border-indigo-200' :
-                          'bg-blue-100 text-blue-700'
-                        }`}>
-                          {note.category || note.type}
-                        </span>
-                        <span className="text-xs text-slate-500 font-mono">{note.date}</span>
-                        {role === 'coach' && (
-                          <span className="text-xs font-bold text-slate-700 bg-slate-200 px-2 py-0.5 rounded-full">
-                            👤 {note.studentName}
-                          </span>
-                        )}
-                      </div>
-                      <h3 className="font-bold text-base text-slate-800">{note.title}</h3>
-                    </div>
+                  <div className="flex items-center space-x-3">
+                    <button
+                      onClick={() => { setActiveTab('members'); setShowAddMember(true); }}
+                      className="text-emerald-200 hover:text-white underline flex items-center text-[11px]"
+                    >
+                      <Icon name="user-plus" className="w-3 h-3 mr-1" /> 部員追加・編集
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </header>
 
-                    <div>
-                      {note.status === 'replied' ? (
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                          <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> 返信済み
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                          <Clock className="w-3.5 h-3.5 mr-1" /> 未返信
-                        </span>
-                      )}
+          {/* Navigation */}
+          <nav className="bg-white border-b border-slate-200 sticky top-[57px] z-20 shadow-sm">
+            <div className="max-w-4xl mx-auto px-2 flex overflow-x-auto text-sm font-medium">
+              <button
+                onClick={() => setActiveTab('notes')}
+                className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
+                  activeTab === 'notes' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Icon name="book-open" className="w-4 h-4 mr-1.5" />
+                {role === 'student' ? '自分のノート' : '監督レビュー一覧'}
+                {role === 'coach' && (
+                  <span className="ml-1.5 bg-amber-500 text-white text-xs px-1.5 py-0.5 rounded-full font-normal">
+                    {notes.filter(n => n.status === 'pending').length}未読
+                  </span>
+                )}
+              </button>
+
+              {role === 'student' && (
+                <button
+                  onClick={() => setActiveTab('create')}
+                  className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
+                    activeTab === 'create' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Icon name="plus" className="w-4 h-4 mr-1.5" />
+                  ノートを書く
+                </button>
+              )}
+
+              <button
+                onClick={() => setActiveTab('team_notes')}
+                className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
+                  activeTab === 'team_notes' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Icon name="users" className="w-4 h-4 mr-1.5" />
+                全員の振り返り・MOM共有
+              </button>
+
+              <button
+                onClick={() => setActiveTab('goals')}
+                className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
+                  activeTab === 'goals' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Icon name="target" className="w-4 h-4 mr-1.5" />
+                目標設定
+              </button>
+
+              <button
+                onClick={() => setActiveTab('dashboard')}
+                className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
+                  activeTab === 'dashboard' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Icon name="bar-chart-2" className="w-4 h-4 mr-1.5" />
+                継続率・スタッツ分析
+              </button>
+
+              <button
+                onClick={() => setActiveTab('match_manage')}
+                className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
+                  activeTab === 'match_manage' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Icon name="trophy" className="w-4 h-4 mr-1.5 text-amber-500" />
+                試合の事前登録（A戦/B戦）
+              </button>
+
+              <button
+                onClick={() => setActiveTab('members')}
+                className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
+                  activeTab === 'members' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Icon name="user-plus" className="w-4 h-4 mr-1.5" />
+                部員登録・管理 ({members.length})
+              </button>
+            </div>
+          </nav>
+
+          {/* Main Area */}
+          <main className="max-w-4xl mx-auto px-4 py-6 flex-1 w-full">
+            {members.length === 0 && activeTab !== 'members' && (
+              <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-6 text-center space-y-3 mb-6 shadow-sm">
+                <Icon name="user-plus" className="w-10 h-10 text-amber-600 mx-auto" />
+                <h3 className="font-bold text-base text-amber-900">まずは部員（自分や選手）を登録しましょう！</h3>
+                <p className="text-xs text-amber-800 max-w-md mx-auto">
+                  まだ部員が登録されていません。「部員追加」から登録すると、ノートの作成や振り返りの記録を開始できます。
+                </p>
+                <button
+                  onClick={() => { setActiveTab('members'); setShowAddMember(true); }}
+                  className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow transition inline-flex items-center"
+                >
+                  <Icon name="user-plus" className="w-4 h-4 mr-1.5" /> 今すぐ最初の部員を追加する
+                </button>
+              </div>
+            )}
+
+            {/* 1. ノート一覧 */}
+            {activeTab === 'notes' && (
+              <div className="space-y-4">
+                {currentStudent && (
+                  <div className="bg-gradient-to-r from-emerald-800 to-emerald-900 text-white p-4 rounded-xl shadow border border-emerald-700 flex justify-between items-center">
+                    <div className="flex items-center space-x-3">
+                      <div className="p-2.5 bg-amber-500/20 rounded-xl border border-amber-400/30">
+                        <Icon name="flame" className="w-7 h-7 text-amber-400 fill-amber-400 animate-bounce" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-sm text-amber-300 flex items-center">
+                          {currentStudent.name} さんのノート継続ストリーク
+                        </h3>
+                        <p className="text-xs text-emerald-100 mt-0.5">
+                          継続は力なり！毎日の振り返りが劇的なサッカー上達につながります。
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-2xl font-black text-amber-400 font-mono">{studentStreakInfo.currentStreak}</span>
+                      <span className="text-xs text-emerald-200 block font-bold">日連続</span>
                     </div>
                   </div>
+                )}
 
-                  <div className="p-4 space-y-3 text-sm">
-                    {/* 試合情報の詳細・個別の対戦相手表示 */}
-                    {note.type === '試合' && (
-                      <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs space-y-2">
-                        <div className="flex justify-between items-center font-bold text-slate-800 border-b pb-1.5">
-                          <span>対戦相手: vs {note.opponent || '未設定'}</span>
-                          {note.ourScore !== undefined && (
-                            <span className="text-sm bg-slate-800 text-white px-2.5 py-0.5 rounded font-black">
-                              {note.ourScore} - {note.opponentScore}
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row gap-3 justify-between items-center">
+                  <div className="flex items-center space-x-2 w-full sm:w-auto flex-wrap gap-y-1.5">
+                    <Icon name="filter" className="w-4 h-4 text-slate-400" />
+                    <span className="text-xs font-bold text-slate-500">絞り込み:</span>
+                    <button
+                      onClick={() => setFilterType('all')}
+                      className={`px-3 py-1 rounded-full text-xs transition ${
+                        filterType === 'all' ? 'bg-slate-800 text-white font-bold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      すべて
+                    </button>
+                    <button
+                      onClick={() => setFilterType('a_match')}
+                      className={`px-3 py-1 rounded-full text-xs transition ${
+                        filterType === 'a_match' ? 'bg-rose-600 text-white font-bold' : 'bg-rose-50 text-rose-700 border border-rose-200'
+                      }`}
+                    >
+                      ⚽ A戦
+                    </button>
+                    <button
+                      onClick={() => setFilterType('b_match')}
+                      className={`px-3 py-1 rounded-full text-xs transition ${
+                        filterType === 'b_match' ? 'bg-indigo-600 text-white font-bold' : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                      }`}
+                    >
+                      ⚽ B戦
+                    </button>
+                    <button
+                      onClick={() => setFilterType('practice')}
+                      className={`px-3 py-1 rounded-full text-xs transition ${
+                        filterType === 'practice' ? 'bg-blue-600 text-white font-bold' : 'bg-blue-50 text-blue-700 border border-blue-200'
+                      }`}
+                    >
+                      🏃 練習
+                    </button>
+                    <button
+                      onClick={() => setFilterType('pending')}
+                      className={`px-3 py-1 rounded-full text-xs transition flex items-center ${
+                        filterType === 'pending' ? 'bg-amber-500 text-white font-bold' : 'bg-amber-50 text-amber-700 border border-amber-200'
+                      }`}
+                    >
+                      <Icon name="clock" className="w-3 h-3 mr-1" /> 未返信
+                    </button>
+                  </div>
+
+                  {role === 'coach' && (
+                    <div className="w-full sm:w-auto flex items-center space-x-2">
+                      <span className="text-xs text-slate-500 whitespace-nowrap">部員選択:</span>
+                      <select
+                        value={selectedStudentFilter}
+                        onChange={(e) => setSelectedStudentFilter(e.target.value)}
+                        className="text-xs bg-slate-50 border border-slate-300 rounded px-2 py-1 text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-full"
+                      >
+                        <option value="all">全員を表示</option>
+                        {members.map(m => (
+                          <option key={m.id} value={m.id}>{m.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                {myFilteredNotes.length === 0 ? (
+                  <div className="bg-white p-12 text-center rounded-xl border border-dashed border-slate-300">
+                    <Icon name="book-open" className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                    <p className="text-slate-500 font-medium">該当する振り返りノートがありません。</p>
+                  </div>
+                ) : (
+                  myFilteredNotes.map(note => (
+                    <div key={note.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition relative">
+                      {note.isMom && (
+                        <div className="bg-gradient-to-r from-amber-500 to-yellow-400 text-white font-bold text-xs px-3 py-1 flex items-center justify-between shadow-inner">
+                          <span className="flex items-center"><Icon name="trophy" className="w-3.5 h-3.5 mr-1" /> 👑 本日の M.O.M (Man of the Match) に選出されました！</span>
+                          <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded">チーム全体に公開中</span>
+                        </div>
+                      )}
+
+                      <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-start gap-2">
+                        <div>
+                          <div className="flex items-center space-x-2 mb-1 flex-wrap gap-y-1">
+                            <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                              note.category?.includes('A戦') ? 'bg-rose-100 text-rose-700 border border-rose-200' :
+                              note.category?.includes('B戦') ? 'bg-indigo-100 text-indigo-700 border border-indigo-200' :
+                              'bg-blue-100 text-blue-700'
+                            }`}>
+                              {note.category || note.type}
+                            </span>
+                            <span className="text-xs text-slate-500 font-mono">{note.date}</span>
+                            {role === 'coach' && (
+                              <span className="text-xs font-bold text-slate-700 bg-slate-200 px-2 py-0.5 rounded-full">
+                                👤 {note.studentName}
+                              </span>
+                            )}
+                          </div>
+                          <h3 className="font-bold text-base text-slate-800">{note.title}</h3>
+                        </div>
+
+                        <div>
+                          {note.status === 'replied' ? (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                              <Icon name="check-circle-2" className="w-3.5 h-3.5 mr-1" /> 返信済み
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                              <Icon name="clock" className="w-3.5 h-3.5 mr-1" /> 未返信
                             </span>
                           )}
                         </div>
-                        <div className="grid grid-cols-4 gap-2 text-center pt-1 font-medium text-slate-700">
-                          <div className="bg-white p-1.5 rounded border border-slate-200">
-                            <span className="text-[10px] text-slate-400 block">出場時間</span>
-                            <span className="font-bold">{note.minutesPlayed}分</span>
-                          </div>
-                          <div className="bg-white p-1.5 rounded border border-slate-200">
-                            <span className="text-[10px] text-slate-400 block">得点</span>
-                            <span className="font-bold text-rose-600">{note.goals}点</span>
-                          </div>
-                          <div className="bg-white p-1.5 rounded border border-slate-200">
-                            <span className="text-[10px] text-slate-400 block">アシスト</span>
-                            <span className="font-bold text-blue-600">{note.assists}回</span>
-                          </div>
-                          <div className="bg-white p-1.5 rounded border border-slate-200">
-                            <span className="text-[10px] text-slate-400 block">システム</span>
-                            <span className="font-bold text-slate-800">{note.formation || '未指定'}</span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded-lg text-xs">
-                      <div className="text-center">
-                        <span className="text-slate-400 block">コンディション</span>
-                        <span className="font-bold text-slate-700">★ {note.condition} / 5</span>
-                      </div>
-                      <div className="text-center border-x border-slate-200">
-                        <span className="text-slate-400 block">疲労度</span>
-                        <span className="font-bold text-slate-700">{note.fatigue} / 5</span>
-                      </div>
-                      <div className="text-center">
-                        <span className="text-slate-400 block">睡眠時間</span>
-                        <span className="font-bold text-slate-700">{note.sleepHours} 時間</span>
-                      </div>
-                    </div>
-
-                    {note.theme && (
-                      <div className="bg-emerald-50/40 p-2.5 rounded-lg border border-emerald-100">
-                        <span className="text-xs font-bold text-emerald-800 block mb-0.5">🎯 今日の意識テーマ</span>
-                        <p className="text-slate-800 font-medium text-xs">{note.theme}</p>
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-                      <div className="bg-emerald-50/50 p-3 rounded-lg border border-emerald-100">
-                        <span className="text-xs font-bold text-emerald-800 block mb-1">👍 成果・うまくいったプレイ</span>
-                        <p className="text-slate-700 whitespace-pre-line text-xs leading-relaxed">{note.goodPoints}</p>
                       </div>
 
-                      <div className="bg-amber-50/50 p-3 rounded-lg border border-amber-100">
-                        <span className="text-xs font-bold text-amber-800 block mb-1">⚠️ 課題・修正したい点</span>
-                        <p className="text-slate-700 whitespace-pre-line text-xs leading-relaxed">{note.badPoints}</p>
-                      </div>
-                    </div>
-
-                    {note.nextAction && (
-                      <div className="bg-blue-50/50 p-2.5 rounded-lg border border-blue-100 text-xs">
-                        <span className="font-bold text-blue-800 block mb-0.5">🚀 上達のための具体的な次のアクション</span>
-                        <p className="text-slate-700">{note.nextAction}</p>
-                      </div>
-                    )}
-
-                    {/* 監督からの返信 */}
-                    {note.status === 'replied' && (
-                      <div className="mt-4 pt-3 border-t border-dashed border-slate-200 space-y-3">
-                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 relative">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center space-x-2">
-                              <Shield className="w-4 h-4 text-amber-600" />
-                              <span className="font-bold text-xs text-amber-900">
-                                {note.coachName || '監督・コーチ'} からのフィードバック
-                              </span>
+                      <div className="p-4 space-y-3 text-sm">
+                        {note.type === '試合' && (
+                          <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs space-y-2">
+                            <div className="flex justify-between items-center font-bold text-slate-800 border-b pb-1.5">
+                              <span>対戦相手: vs {note.opponent || '未設定'}</span>
+                              {note.ourScore !== undefined && (
+                                <span className="text-sm bg-slate-800 text-white px-2.5 py-0.5 rounded font-black">
+                                  {note.ourScore} - {note.opponentScore}
+                                </span>
+                              )}
                             </div>
-                            <div className="flex items-center space-x-1 text-amber-500">
-                              {[...Array(5)].map((_, i) => (
-                                <Star
-                                  key={i}
-                                  className={`w-3.5 h-3.5 ${i < note.coachRating ? 'fill-amber-400 text-amber-400' : 'text-slate-300'}`}
-                                />
-                              ))}
+                            <div className="grid grid-cols-4 gap-2 text-center pt-1 font-medium text-slate-700">
+                              <div className="bg-white p-1.5 rounded border border-slate-200">
+                                <span className="text-[10px] text-slate-400 block">出場時間</span>
+                                <span className="font-bold">{note.minutesPlayed}分</span>
+                              </div>
+                              <div className="bg-white p-1.5 rounded border border-slate-200">
+                                <span className="text-[10px] text-slate-400 block">得点</span>
+                                <span className="font-bold text-rose-600">{note.goals}点</span>
+                              </div>
+                              <div className="bg-white p-1.5 rounded border border-slate-200">
+                                <span className="text-[10px] text-slate-400 block">アシスト</span>
+                                <span className="font-bold text-blue-600">{note.assists}回</span>
+                              </div>
+                              <div className="bg-white p-1.5 rounded border border-slate-200">
+                                <span className="text-[10px] text-slate-400 block">システム</span>
+                                <span className="font-bold text-slate-800">{note.formation || '未指定'}</span>
+                              </div>
                             </div>
-                          </div>
-                          <p className="text-slate-800 text-xs leading-relaxed font-medium pl-1">
-                            {note.coachComment}
-                          </p>
-                          <span className="text-[10px] text-slate-400 block text-right mt-1">{note.commentDate}</span>
-                        </div>
-
-                        {note.studentReply && (
-                          <div className="ml-4 bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-                            <div className="flex items-center space-x-2 mb-1">
-                              <CornerDownRight className="w-3.5 h-3.5 text-emerald-600" />
-                              <span className="font-bold text-xs text-emerald-900">{note.studentName} の返答</span>
-                            </div>
-                            <p className="text-slate-800 text-xs leading-relaxed pl-5 font-medium">
-                              {note.studentReply}
-                            </p>
-                            <span className="text-[10px] text-slate-400 block text-right mt-1">{note.replyDate}</span>
                           </div>
                         )}
 
-                        {role === 'student' && !note.studentReply && (
-                          <div className="flex justify-end pt-1">
+                        <div className="grid grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded-lg text-xs">
+                          <div className="text-center">
+                            <span className="text-slate-400 block">コンディション</span>
+                            <span className="font-bold text-slate-700">★ {note.condition} / 5</span>
+                          </div>
+                          <div className="text-center border-x border-slate-200">
+                            <span className="text-slate-400 block">疲労度</span>
+                            <span className="font-bold text-slate-700">{note.fatigue} / 5</span>
+                          </div>
+                          <div className="text-center">
+                            <span className="text-slate-400 block">睡眠時間</span>
+                            <span className="font-bold text-slate-700">{note.sleepHours} 時間</span>
+                          </div>
+                        </div>
+
+                        {note.theme && (
+                          <div className="bg-emerald-50/40 p-2.5 rounded-lg border border-emerald-100">
+                            <span className="text-xs font-bold text-emerald-800 block mb-0.5">🎯 今日の意識テーマ</span>
+                            <p className="text-slate-800 font-medium text-xs">{note.theme}</p>
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                          <div className="bg-emerald-50/50 p-3 rounded-lg border border-emerald-100">
+                            <span className="text-xs font-bold text-emerald-800 block mb-1">👍 成果・うまくいったプレイ</span>
+                            <p className="text-slate-700 whitespace-pre-line text-xs leading-relaxed">{note.goodPoints}</p>
+                          </div>
+
+                          <div className="bg-amber-50/50 p-3 rounded-lg border border-amber-100">
+                            <span className="text-xs font-bold text-amber-800 block mb-1">⚠️ 課題・修正したい点</span>
+                            <p className="text-slate-700 whitespace-pre-line text-xs leading-relaxed">{note.badPoints}</p>
+                          </div>
+                        </div>
+
+                        {note.nextAction && (
+                          <div className="bg-blue-50/50 p-2.5 rounded-lg border border-blue-100 text-xs">
+                            <span className="font-bold text-blue-800 block mb-0.5">🚀 上達のための具体的な次のアクション</span>
+                            <p className="text-slate-700">{note.nextAction}</p>
+                          </div>
+                        )}
+
+                        {note.status === 'replied' && (
+                          <div className="mt-4 pt-3 border-t border-dashed border-slate-200 space-y-3">
+                            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 relative">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center space-x-2">
+                                  <Icon name="shield" className="w-4 h-4 text-amber-600" />
+                                  <span className="font-bold text-xs text-amber-900">
+                                    {note.coachName || '監督・コーチ'} からのフィードバック
+                                  </span>
+                                </div>
+                                <div className="flex items-center space-x-1 text-amber-500">
+                                  {[...Array(5)].map((_, i) => (
+                                    <Icon
+                                      key={i}
+                                      name="star"
+                                      className={`w-3.5 h-3.5 ${i < note.coachRating ? 'fill-amber-400 text-amber-400' : 'text-slate-300'}`}
+                                    />
+                                  ))}
+                                </div>
+                              </div>
+                              <p className="text-slate-800 text-xs leading-relaxed font-medium pl-1">
+                                {note.coachComment}
+                              </p>
+                              <span className="text-[10px] text-slate-400 block text-right mt-1">{note.commentDate}</span>
+                            </div>
+
+                            {note.studentReply && (
+                              <div className="ml-4 bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+                                <div className="flex items-center space-x-2 mb-1">
+                                  <Icon name="corner-down-right" className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span className="font-bold text-xs text-emerald-900">{note.studentName} の返答</span>
+                                </div>
+                                <p className="text-slate-800 text-xs leading-relaxed pl-5 font-medium">
+                                  {note.studentReply}
+                                </p>
+                                <span className="text-[10px] text-slate-400 block text-right mt-1">{note.replyDate}</span>
+                              </div>
+                            )}
+
+                            {role === 'student' && !note.studentReply && (
+                              <div className="flex justify-end pt-1">
+                                <button
+                                  onClick={() => {
+                                    setReplyToCoachNote(note);
+                                    setStudentReplyText('');
+                                  }}
+                                  className="text-xs text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 font-bold px-3 py-1.5 rounded-lg flex items-center transition"
+                                >
+                                  <Icon name="message-square" className="w-3.5 h-3.5 mr-1" />
+                                  アドバイスに返信・感謝を伝える
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {role === 'coach' && note.status === 'pending' && (
+                          <div className="mt-4 pt-2 flex justify-end">
                             <button
                               onClick={() => {
-                                setReplyToCoachNote(note);
-                                setStudentReplyText('');
+                                setSelectedNote(note);
+                                setReplyText('');
+                                setReplyRating(5);
+                                setIsMomCheck(false);
                               }}
-                              className="text-xs text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 font-bold px-3 py-1.5 rounded-lg flex items-center transition"
+                              className="bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs px-4 py-2 rounded-lg flex items-center shadow-sm transition"
                             >
-                              <MessageSquare className="w-3.5 h-3.5 mr-1" />
-                              アドバイスに返信・感謝を伝える
+                              <Icon name="message-square" className="w-3.5 h-3.5 mr-1.5" />
+                              このノートにフィードバックする
                             </button>
                           </div>
                         )}
                       </div>
-                    )}
-
-                    {role === 'coach' && note.status === 'pending' && (
-                      <div className="mt-4 pt-2 flex justify-end">
-                        <button
-                          onClick={() => {
-                            setSelectedNote(note);
-                            setReplyText('');
-                            setReplyRating(5);
-                            setIsMomCheck(false);
-                          }}
-                          className="bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs px-4 py-2 rounded-lg flex items-center shadow-sm transition"
-                        >
-                          <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
-                          このノートにフィードバックする
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        )}
-
-        {/* 2. ノートを書く (選手用) */}
-        {activeTab === 'create' && role === 'student' && (
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-            <h2 className="text-lg font-bold text-slate-800 mb-4 pb-2 border-b flex items-center justify-between">
-              <span className="flex items-center">
-                <Plus className="w-5 h-5 text-emerald-600 mr-2" />
-                振り返りノートを提出 ({currentStudent ? currentStudent.name : '未選択'})
-              </span>
-              {currentStudent && (
-                <span className="text-xs font-bold text-amber-600 flex items-center bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
-                  <Flame className="w-3.5 h-3.5 fill-amber-500 mr-1" />
-                  {studentStreakInfo.currentStreak}日連続挑戦中！
-                </span>
-              )}
-            </h2>
-
-            <form onSubmit={handleCreateNote} className="space-y-4 text-sm">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">タイプ</label>
-                  <select
-                    value={newNote.type}
-                    onChange={e => setNewNote({ ...newNote, type: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 outline-none"
-                  >
-                    <option value="試合">試合</option>
-                    <option value="練習">練習</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">カテゴリー (A戦/B戦/TRM)</label>
-                  <select
-                    value={newNote.category}
-                    onChange={e => setNewNote({ ...newNote, category: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 outline-none font-bold"
-                  >
-                    <option value="A戦 (公式戦)">A戦 (公式戦)</option>
-                    <option value="A戦 (TRM)">A戦 (TRM)</option>
-                    <option value="B戦 (TRM)">B戦 (TRM)</option>
-                    <option value="1本目/2本目">1本目/2本目</option>
-                    <option value="チーム練習">チーム練習</option>
-                    <option value="自主トレ">自主トレ</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">日付</label>
-                  <input
-                    type="date"
-                    value={newNote.date}
-                    onChange={e => setNewNote({ ...newNote, date: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 outline-none"
-                  />
-                </div>
+                    </div>
+                  ))
+                )}
               </div>
+            )}
 
-              {/* 試合選択時の自動入力＆個別相手設定 */}
-              {newNote.type === '試合' && (
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* 2. ノートを書く */}
+            {activeTab === 'create' && role === 'student' && (
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <h2 className="text-lg font-bold text-slate-800 mb-4 pb-2 border-b flex items-center justify-between">
+                  <span className="flex items-center">
+                    <Icon name="plus" className="w-5 h-5 text-emerald-600 mr-2" />
+                    振り返りノートを提出 ({currentStudent ? currentStudent.name : '未選択'})
+                  </span>
+                  {currentStudent && (
+                    <span className="text-xs font-bold text-amber-600 flex items-center bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
+                      <Icon name="flame" className="w-3.5 h-3.5 fill-amber-500 mr-1 text-amber-500" />
+                      {studentStreakInfo.currentStreak}日連続挑戦中！
+                    </span>
+                  )}
+                </h2>
+
+                <form onSubmit={handleCreateNote} className="space-y-4 text-sm">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        ⚽ 登録済みの試合から選択 (自動読み込み)
-                      </label>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">タイプ</label>
                       <select
-                        value={newNote.selectedMatchId}
-                        onChange={e => handleMatchSelect(e.target.value)}
-                        className="w-full bg-white border border-slate-300 text-slate-800 font-bold rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 outline-none text-xs"
+                        value={newNote.type}
+                        onChange={e => setNewNote({ ...newNote, type: e.target.value })}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 outline-none"
                       >
-                        <option value="">-- 手動で相手を入力する --</option>
-                        {matches.map(m => (
-                          <option key={m.id} value={m.id}>
-                            [{m.category || '試合'}] {m.date} vs {m.opponent}
-                          </option>
-                        ))}
+                        <option value="試合">試合</option>
+                        <option value="練習">練習</option>
                       </select>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        対戦相手 (個別に指定する場合)
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="例: 西高校B / 〇〇FC"
-                        value={newNote.customOpponent}
-                        onChange={e => setNewNote({ ...newNote, customOpponent: e.target.value })}
-                        className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="pt-2 border-t border-slate-200">
-                    <h4 className="font-bold text-xs text-slate-700 mb-2">⚽ 自分の個人の試合スタッツ</h4>
-                    <div className="grid grid-cols-3 gap-3 text-xs">
-                      <div>
-                        <label className="block font-bold text-slate-600 mb-1">出場時間 (分)</label>
-                        <input
-                          type="number"
-                          min="0"
-                          value={newNote.minutesPlayed === '' ? '' : newNote.minutesPlayed}
-                          onFocus={e => e.target.select()}
-                          onChange={e => {
-                            const val = e.target.value;
-                            setNewNote({ ...newNote, minutesPlayed: val === '' ? '' : parseInt(val, 10) || 0 });
-                          }}
-                          className="w-full bg-white border border-slate-300 rounded p-2 text-center font-bold"
-                        />
-                      </div>
-                      <div>
-                        <label className="block font-bold text-slate-600 mb-1">自分の得点</label>
-                        <input
-                          type="number"
-                          min="0"
-                          value={newNote.goals === '' ? '' : newNote.goals}
-                          onFocus={e => e.target.select()}
-                          onChange={e => {
-                            const val = e.target.value;
-                            setNewNote({ ...newNote, goals: val === '' ? '' : parseInt(val, 10) || 0 });
-                          }}
-                          className="w-full bg-white border border-slate-300 rounded p-2 text-center font-bold text-rose-600"
-                        />
-                      </div>
-                      <div>
-                        <label className="block font-bold text-slate-600 mb-1">自分のアシスト</label>
-                        <input
-                          type="number"
-                          min="0"
-                          value={newNote.assists === '' ? '' : newNote.assists}
-                          onFocus={e => e.target.select()}
-                          onChange={e => {
-                            const val = e.target.value;
-                            setNewNote({ ...newNote, assists: val === '' ? '' : parseInt(val, 10) || 0 });
-                          }}
-                          className="w-full bg-white border border-slate-300 rounded p-2 text-center font-bold text-blue-600"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* 体調・疲労度 */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50 p-3 rounded-lg border border-slate-200">
-                <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="text-xs font-bold text-slate-600">コンディション</label>
-                    <span className="text-xs font-bold text-emerald-600">{newNote.condition} / 5</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="1"
-                    max="5"
-                    value={newNote.condition}
-                    onChange={e => setNewNote({ ...newNote, condition: parseInt(e.target.value) })}
-                    className="w-full accent-emerald-600 cursor-pointer"
-                  />
-                </div>
-                <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="text-xs font-bold text-slate-600">疲労度</label>
-                    <span className="text-xs font-bold text-amber-600">{newNote.fatigue} / 5</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="1"
-                    max="5"
-                    value={newNote.fatigue}
-                    onChange={e => setNewNote({ ...newNote, fatigue: parseInt(e.target.value) })}
-                    className="w-full accent-amber-600 cursor-pointer"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">睡眠時間 (時間)</label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    value={newNote.sleepHours}
-                    onChange={e => setNewNote({ ...newNote, sleepHours: parseFloat(e.target.value) })}
-                    className="w-full bg-white border border-slate-300 rounded p-1.5 focus:ring-2 focus:ring-emerald-500 outline-none text-xs"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">タイトル <span className="text-rose-500">*</span></label>
-                <input
-                  type="text"
-                  placeholder="例: パスアンドゴーの意識とB戦での守備意識"
-                  value={newNote.title}
-                  onChange={e => setNewNote({ ...newNote, title: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">今日の意識テーマ</label>
-                <input
-                  type="text"
-                  placeholder="例: ボールを受ける前に首を2回振る・ファーストタッチで相手の逆をとる"
-                  value={newNote.theme}
-                  onChange={e => setNewNote({ ...newNote, theme: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-emerald-800 mb-1">👍 成果・うまくいったこと <span className="text-rose-500">*</span></label>
-                <textarea
-                  rows="3"
-                  placeholder="意識して改善できた点、成功したプレイ"
-                  value={newNote.goodPoints}
-                  onChange={e => setNewNote({ ...newNote, goodPoints: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500 outline-none"
-                ></textarea>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-amber-800 mb-1">⚠️ 課題・反省点</label>
-                <textarea
-                  rows="3"
-                  placeholder="ミスした原因、判断が遅れた場面"
-                  value={newNote.badPoints}
-                  onChange={e => setNewNote({ ...newNote, badPoints: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500 outline-none"
-                ></textarea>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-blue-800 mb-1">🚀 次の練習・試合に向けた具体的な行動</label>
-                <input
-                  type="text"
-                  placeholder="例: トラップの瞬間に次のアクションを決めておく"
-                  value={newNote.nextAction}
-                  onChange={e => setNewNote({ ...newNote, nextAction: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 outline-none"
-                />
-              </div>
-
-              <div className="pt-2">
-                <button
-                  type="submit"
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-lg shadow transition flex items-center justify-center text-sm"
-                >
-                  <Send className="w-4 h-4 mr-2" />
-                  振り返りノートを提出する
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {/* 3. チーム全員のノート＆MOM共有 */}
-        {activeTab === 'team_notes' && (
-          <div className="space-y-4">
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <h2 className="text-base font-bold text-slate-800 flex items-center">
-                  <Users className="w-5 h-5 text-emerald-600 mr-2" />
-                  全員の振り返り・MOM受賞共有
-                </h2>
-                <span className="text-xs text-slate-500 font-medium">✨ 仲間のプレイやMOMの振り返りを参考にして成長しよう！</span>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-2">
-                <div className="relative flex-1">
-                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="選手名・対戦相手・テーマ・成果で検索..."
-                    value={teamSearchQuery}
-                    onChange={(e) => setTeamSearchQuery(e.target.value)}
-                    className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
-                  />
-                </div>
-                <select
-                  value={selectedStudentFilter}
-                  onChange={(e) => setSelectedStudentFilter(e.target.value)}
-                  className="bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-700"
-                >
-                  <option value="all">全員のノート</option>
-                  {members.map(m => (
-                    <option key={m.id} value={m.id}>{m.name} ({m.position})</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              {teamFilteredNotes.length === 0 ? (
-                <div className="p-8 text-center bg-white rounded-xl text-slate-400 text-xs border">
-                  提出されたノートはありません。
-                </div>
-              ) : (
-                teamFilteredNotes.map(n => (
-                  <div key={n.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-2 hover:border-emerald-300 transition relative overflow-hidden">
-                    {n.isMom && (
-                      <div className="bg-gradient-to-r from-amber-500 to-yellow-400 text-white text-[11px] font-bold px-3 py-1 -mx-4 -mt-4 mb-3 flex items-center justify-between">
-                        <span className="flex items-center"><Trophy className="w-3.5 h-3.5 mr-1" /> 👑 MOM受賞ノート (本日のヒーロー)</span>
-                        <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded">評価 ★5</span>
-                      </div>
-                    )}
-
-                    <div className="flex justify-between items-center border-b pb-2">
-                      <div className="flex items-center space-x-2">
-                        <span className="font-bold text-sm text-slate-800">{n.studentName}</span>
-                        <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${
-                          n.category?.includes('A戦') ? 'bg-rose-100 text-rose-700' :
-                          n.category?.includes('B戦') ? 'bg-indigo-100 text-indigo-700' :
-                          'bg-slate-100 text-slate-600'
-                        }`}>
-                          {n.category || n.type}
-                        </span>
-                        {n.opponent && (
-                          <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
-                            vs {n.opponent}
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-xs text-slate-400 font-mono">{n.date}</span>
-                    </div>
-
-                    <h4 className="font-bold text-xs text-slate-800">{n.title}</h4>
-
-                    {n.theme && (
-                      <p className="text-xs text-emerald-800 font-medium bg-emerald-50/50 px-2.5 py-1 rounded">
-                        🎯 テーマ: {n.theme}
-                      </p>
-                    )}
-
-                    <div className="bg-emerald-50/60 p-2.5 rounded-lg text-xs">
-                      <span className="font-bold text-emerald-800 block text-[11px] mb-0.5">👍 成果・うまくいったこと:</span>
-                      <p className="text-slate-700">{n.goodPoints}</p>
-                    </div>
-
-                    {n.coachComment && (
-                      <div className="bg-amber-50 border border-amber-200 p-2.5 rounded-lg text-xs space-y-1">
-                        <span className="font-bold text-amber-900 block text-[11px]">💬 監督からのアドバイス:</span>
-                        <p className="text-slate-700">{n.coachComment}</p>
-                      </div>
-                    )}
-
-                    {n.nextAction && (
-                      <div className="text-xs text-blue-800 bg-blue-50/50 p-2 rounded">
-                        <span className="font-bold">🚀 次の行動: </span> {n.nextAction}
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* 4. 目標設定 */}
-        {activeTab === 'goals' && (
-          <div className="space-y-4">
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-              <h2 className="text-lg font-bold text-slate-800 mb-2 flex items-center">
-                <Target className="w-5 h-5 text-emerald-600 mr-2" />
-                目標設定 ({currentStudent ? currentStudent.name : '未選択'})
-              </h2>
-
-              <form onSubmit={handleSaveGoal} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">🏆 年間目標（今年度のゴール）</label>
-                  <textarea
-                    rows="3"
-                    value={currentGoal.yearGoal}
-                    onChange={e => setCurrentGoal({ ...currentGoal, yearGoal: e.target.value })}
-                    placeholder="例: インターハイ予選ベスト8進出・A戦スタメン定着"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
-                  ></textarea>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">📅 今月のテーマ・月間目標</label>
-                  <textarea
-                    rows="3"
-                    value={currentGoal.monthGoal}
-                    onChange={e => setCurrentGoal({ ...currentGoal, monthGoal: e.target.value })}
-                    placeholder="例: B戦で結果を残してA戦昇格、逆足のロングパス精度向上面"
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
-                  ></textarea>
-                </div>
-
-                {role === 'student' && (
-                  <button
-                    type="submit"
-                    className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow transition"
-                  >
-                    目標を保存・更新する
-                  </button>
-                )}
-              </form>
-            </div>
-
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-              <h3 className="text-sm font-bold text-slate-800 mb-3">部員全員の目標一覧</h3>
-              {members.length === 0 ? (
-                <p className="text-xs text-slate-400 italic">部員が登録されていません。</p>
-              ) : (
-                <div className="space-y-3">
-                  {members.map(m => {
-                    const g = goals.find(item => item.studentId === m.id);
-                    return (
-                      <div key={m.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs">
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="font-bold text-slate-800">{m.name} ({m.position})</span>
-                          <span className="text-[10px] text-slate-400">更新: {g?.updatedAt || '未設定'}</span>
-                        </div>
-                        <div className="text-slate-600 space-y-1">
-                          <p><span className="font-semibold text-emerald-700">【年間】</span> {g?.yearGoal || '未設定'}</p>
-                          <p><span className="font-semibold text-blue-700">【今月】</span> {g?.monthGoal || '未設定'}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* 5. 継続率・スタッツ・MOM分析 */}
-        {activeTab === 'dashboard' && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center">
-                <span className="text-xs text-slate-400 block font-bold">消化試合数</span>
-                <span className="text-2xl font-black text-rose-600">{stats.matchCount} 試合</span>
-              </div>
-              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center">
-                <span className="text-xs text-slate-400 block font-bold">総得点数</span>
-                <span className="text-2xl font-black text-emerald-600">{stats.totalGoals} 点</span>
-              </div>
-              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center">
-                <span className="text-xs text-slate-400 block font-bold">総アシスト数</span>
-                <span className="text-2xl font-black text-blue-600">{stats.totalAssists} 回</span>
-              </div>
-              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center">
-                <span className="text-xs text-slate-400 block font-bold">MOM選出数</span>
-                <span className="text-2xl font-black text-amber-500">{stats.totalMoms} 回</span>
-              </div>
-            </div>
-
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-              <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center justify-between">
-                <span className="flex items-center">
-                  <Flame className="w-4 h-4 text-amber-500 mr-2 fill-amber-500" />
-                  部員の継続力ランキング ＆ スタッツ
-                </span>
-                <span className="text-xs text-slate-400 font-normal">※連続継続数順</span>
-              </h3>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50 text-slate-500">
-                      <th className="py-2.5 px-3">順位</th>
-                      <th className="py-2.5 px-3">名前</th>
-                      <th className="py-2.5 px-3">Pos</th>
-                      <th className="py-2.5 px-3 text-center">🔥 連続提出</th>
-                      <th className="py-2.5 px-3 text-center">通算提出</th>
-                      <th className="py-2.5 px-3 text-center">得点</th>
-                      <th className="py-2.5 px-3 text-center">アシスト</th>
-                      <th className="py-2.5 px-3 text-center">👑 MOM</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {stats.studentStats.length === 0 ? (
-                      <tr>
-                        <td colSpan="8" className="py-6 text-center text-slate-400">データが存在しません。</td>
-                      </tr>
-                    ) : (
-                      stats.studentStats.map((st, idx) => (
-                        <tr key={st.id} className="hover:bg-slate-50">
-                          <td className="py-2.5 px-3 font-bold text-slate-500">#{idx + 1}</td>
-                          <td className="py-2.5 px-3 font-bold text-slate-800 flex items-center">
-                            {st.name}
-                            {st.moms > 0 && (
-                              <span className="ml-1.5 bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.2 rounded font-bold">
-                                👑×{st.moms}
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-2.5 px-3 text-slate-500">{st.position}</td>
-                          <td className="py-2.5 px-3 text-center font-black text-amber-600">
-                            {st.currentStreak > 0 ? `${st.currentStreak}日` : '-'}
-                          </td>
-                          <td className="py-2.5 px-3 text-center font-bold text-slate-600">{st.totalDays}日</td>
-                          <td className="py-2.5 px-3 text-center font-bold text-rose-600">{st.goals}</td>
-                          <td className="py-2.5 px-3 text-center font-bold text-blue-600">{st.assists}</td>
-                          <td className="py-2.5 px-3 text-center font-bold text-amber-500">{st.moms} 回</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 6. ⚽ 試合情報の事前登録（A戦・B戦対応） */}
-        {activeTab === 'match_manage' && (
-          <div className="space-y-6">
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-              <div className="flex justify-between items-center border-b pb-3 mb-4">
-                <div>
-                  <h2 className="text-base font-bold text-slate-800 flex items-center">
-                    <Trophy className="w-5 h-5 text-amber-500 mr-2" />
-                    マネージャー・記録担当：試合情報の事前登録
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    A戦/B戦ごとに試合日程や相手、スコアを登録しておくことで、部員がスムーズに振り返りを作成できます。
-                  </p>
-                </div>
-              </div>
-
-              <form onSubmit={handleCreateMatch} className="space-y-4 text-xs">
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">区分 (A戦/B戦)</label>
-                    <select
-                      value={newMatch.category}
-                      onChange={e => setNewMatch({ ...newMatch, category: e.target.value })}
-                      className="w-full bg-slate-50 border border-slate-300 rounded p-2 focus:ring-2 focus:ring-emerald-500 outline-none font-bold"
-                    >
-                      <option value="A戦 (公式戦)">A戦 (公式戦)</option>
-                      <option value="A戦 (TRM)">A戦 (TRM)</option>
-                      <option value="B戦 (TRM)">B戦 (TRM)</option>
-                      <option value="1本目/2本目">1本目/2本目</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">試合日</label>
-                    <input
-                      type="date"
-                      value={newMatch.date}
-                      onChange={e => setNewMatch({ ...newMatch, date: e.target.value })}
-                      className="w-full bg-slate-50 border border-slate-300 rounded p-2 focus:ring-2 focus:ring-emerald-500 outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">大会名・区分</label>
-                    <input
-                      type="text"
-                      placeholder="例: 秋季大会 2回戦 / 練習試合"
-                      value={newMatch.competition}
-                      onChange={e => setNewMatch({ ...newMatch, competition: e.target.value })}
-                      className="w-full bg-slate-50 border border-slate-300 rounded p-2 focus:ring-2 focus:ring-emerald-500 outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">対戦相手 <span className="text-rose-500">*</span></label>
-                    <input
-                      type="text"
-                      placeholder="例: 西高校A"
-                      value={newMatch.opponent}
-                      onChange={e => setNewMatch({ ...newMatch, opponent: e.target.value })}
-                      className="w-full bg-slate-50 border border-slate-300 rounded p-2 focus:ring-2 focus:ring-emerald-500 outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-amber-50/50 p-3 rounded-lg border border-amber-200/60">
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">スコア (ウチ - 相手)</label>
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="number"
-                        min="0"
-                        value={newMatch.ourScore === '' ? '' : newMatch.ourScore}
-                        onFocus={e => e.target.select()}
-                        onChange={e => {
-                          const val = e.target.value;
-                          setNewMatch({ ...newMatch, ourScore: val === '' ? '' : parseInt(val, 10) || 0 });
-                        }}
-                        className="w-20 bg-white border border-slate-300 rounded p-2 text-center font-bold text-slate-800"
-                      />
-                      <span className="font-bold text-slate-500">-</span>
-                      <input
-                        type="number"
-                        min="0"
-                        value={newMatch.opponentScore === '' ? '' : newMatch.opponentScore}
-                        onFocus={e => e.target.select()}
-                        onChange={e => {
-                          const val = e.target.value;
-                          setNewMatch({ ...newMatch, opponentScore: val === '' ? '' : parseInt(val, 10) || 0 });
-                        }}
-                        className="w-20 bg-white border border-slate-300 rounded p-2 text-center font-bold text-slate-800"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">基本システム (フォーメーション)</label>
-                    <select
-                      value={newMatch.formation}
-                      onChange={e => setNewMatch({ ...newMatch, formation: e.target.value })}
-                      className="w-full bg-white border border-slate-300 rounded p-2 outline-none"
-                    >
-                      <option value="4-3-3">4-3-3</option>
-                      <option value="4-4-2">4-4-2</option>
-                      <option value="3-5-2">3-5-2</option>
-                      <option value="4-2-3-1">4-2-3-1</option>
-                      <option value="3-4-3">3-4-3</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">マネージャーメモ・試合の総括</label>
-                  <textarea
-                    rows="2"
-                    placeholder="例: B戦1本目。前線からの守備ハメは意識できたが、ビルドアップの失点あり。"
-                    value={newMatch.notes}
-                    onChange={e => setNewMatch({ ...newMatch, notes: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-300 rounded p-2 focus:ring-2 focus:ring-emerald-500 outline-none"
-                  ></textarea>
-                </div>
-
-                <button
-                  type="submit"
-                  className="bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 px-6 rounded-lg shadow transition flex items-center justify-center text-xs"
-                >
-                  <Save className="w-4 h-4 mr-1.5" /> 試合データをチーム全体に共有登録する
-                </button>
-              </form>
-            </div>
-
-            {/* 登録済みの試合一覧 */}
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-3">
-              <h3 className="font-bold text-slate-800 text-sm">共有中の登録済み試合リスト ({matches.length}件)</h3>
-              {matches.length === 0 ? (
-                <p className="text-xs text-slate-400 italic">登録済みの試合データはありません。</p>
-              ) : (
-                <div className="space-y-2">
-                  {matches.map(m => (
-                    <div key={m.id} className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs">
-                      <div>
-                        <div className="flex items-center space-x-2">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            m.category?.includes('A戦') ? 'bg-rose-100 text-rose-700' : 'bg-indigo-100 text-indigo-700'
-                          }`}>
-                            {m.category || '試合'}
-                          </span>
-                          <span className="font-mono text-slate-400">{m.date}</span>
-                          <span className="font-bold text-slate-800">{m.competition || '試合'} vs {m.opponent}</span>
-                          <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-black">
-                            {m.ourScore} - {m.opponentScore}
-                          </span>
-                        </div>
-                        {m.notes && <p className="text-slate-500 text-[11px] mt-1">{m.notes}</p>}
-                      </div>
-
-                      <span className="text-[11px] bg-slate-200 text-slate-600 px-2 py-1 rounded">
-                        システム: {m.formation}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* 7. 部員管理 */}
-        {activeTab === 'members' && (
-          <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-6">
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center border-b pb-3 gap-2">
-              <div>
-                <h2 className="text-lg font-bold text-slate-800 flex items-center">
-                  <UserPlus className="w-5 h-5 text-emerald-600 mr-2" />
-                  部員情報の管理・追加
-                </h2>
-                <p className="text-xs text-slate-500">部員やマネージャーをここから追加・管理できます。</p>
-              </div>
-              <button
-                onClick={() => setShowAddMember(!showAddMember)}
-                className="bg-emerald-600 text-white text-xs font-bold px-3.5 py-2 rounded-lg hover:bg-emerald-700 transition w-full sm:w-auto"
-              >
-                {showAddMember ? 'フォームを閉じる' : '+ 新規部員・マネージャー追加'}
-              </button>
-            </div>
-
-            {showAddMember && (
-              <form onSubmit={handleAddMember} className="bg-emerald-50/80 p-4 rounded-xl border border-emerald-200 space-y-3 text-xs shadow-inner">
-                <h3 className="font-bold text-emerald-900 text-sm flex items-center">
-                  <UserPlus className="w-4 h-4 mr-1 text-emerald-700" /> 新メンバーの入力
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">名前 <span className="text-rose-500">*</span></label>
-                    <input
-                      type="text"
-                      placeholder="例: 山田 太郎"
-                      value={editingMember.name}
-                      onChange={e => setEditingMember({ ...editingMember, name: e.target.value })}
-                      className="w-full bg-white border border-slate-300 rounded p-2 focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">学年</label>
-                    <select
-                      value={editingMember.grade}
-                      onChange={e => setEditingMember({ ...editingMember, grade: e.target.value })}
-                      className="w-full bg-white border border-slate-300 rounded p-2 focus:outline-none"
-                    >
-                      <option value="1年">1年</option>
-                      <option value="2年">2年</option>
-                      <option value="3年">3年</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">ポジション / 役割</label>
-                    <select
-                      value={editingMember.position}
-                      onChange={e => setEditingMember({ ...editingMember, position: e.target.value })}
-                      className="w-full bg-white border border-slate-300 rounded p-2 focus:outline-none"
-                    >
-                      <option value="FW">FW</option>
-                      <option value="MF">MF</option>
-                      <option value="DF">DF</option>
-                      <option value="GK">GK</option>
-                      <option value="MG">マネージャー</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">背番号</label>
-                    <input
-                      type="number"
-                      placeholder="10 (MGは0)"
-                      value={editingMember.number}
-                      onChange={e => setEditingMember({ ...editingMember, number: e.target.value })}
-                      className="w-full bg-white border border-slate-300 rounded p-2 focus:outline-none"
-                    />
-                  </div>
-                </div>
-                <button
-                  type="submit"
-                  className="bg-emerald-600 text-white font-bold px-5 py-2 rounded shadow hover:bg-emerald-700 transition"
-                >
-                  部員を登録する
-                </button>
-              </form>
-            )}
-
-            <div className="space-y-3">
-              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">現在登録されているメンバー ({members.length}名)</h3>
-              {members.length === 0 ? (
-                <div className="bg-slate-50 p-8 text-center rounded-xl border border-dashed border-slate-300">
-                  <p className="text-xs text-slate-500">部員がまだ登録されていません。上のボタンから追加してください。</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {members.map(m => {
-                    const streak = calculateStreak(m.id);
-                    return (
-                      <div
-                        key={m.id}
-                        className={`p-3.5 rounded-xl border flex justify-between items-center transition ${
-                          m.id === currentStudentId ? 'border-emerald-500 bg-emerald-50/30 ring-1 ring-emerald-500' : 'border-slate-200 bg-white'
-                        }`}
+                      <label className="block text-xs font-bold text-slate-600 mb-1">カテゴリー (A戦/B戦/TRM)</label>
+                      <select
+                        value={newNote.category}
+                        onChange={e => setNewNote({ ...newNote, category: e.target.value })}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 outline-none font-bold"
                       >
-                        <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 rounded-full bg-emerald-800 text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
-                            {m.position === 'MG' ? 'MG' : `#${m.number}`}
+                        <option value="A戦 (公式戦)">A戦 (公式戦)</option>
+                        <option value="A戦 (TRM)">A戦 (TRM)</option>
+                        <option value="B戦 (TRM)">B戦 (TRM)</option>
+                        <option value="1本目/2本目">1本目/2本目</option>
+                        <option value="チーム練習">チーム練習</option>
+                        <option value="自主トレ">自主トレ</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">日付</label>
+                      <input
+                        type="date"
+                        value={newNote.date}
+                        onChange={e => setNewNote({ ...newNote, date: e.target.value })}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {newNote.type === '試合' && (
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            ⚽ 登録済みの試合から選択
+                          </label>
+                          <select
+                            value={newNote.selectedMatchId}
+                            onChange={e => handleMatchSelect(e.target.value)}
+                            className="w-full bg-white border border-slate-300 text-slate-800 font-bold rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 outline-none text-xs"
+                          >
+                            <option value="">-- 手動で相手を入力する --</option>
+                            {matches.map(m => (
+                              <option key={m.id} value={m.id}>
+                                [{m.category || '試合'}] {m.date} vs {m.opponent}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">
+                            対戦相手 (個別に指定する場合)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="例: 西高校B / 〇〇FC"
+                            value={newNote.customOpponent}
+                            onChange={e => setNewNote({ ...newNote, customOpponent: e.target.value })}
+                            className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-200">
+                        <h4 className="font-bold text-xs text-slate-700 mb-2">⚽ 自分の個人の試合スタッツ</h4>
+                        <div className="grid grid-cols-3 gap-3 text-xs">
+                          <div>
+                            <label className="block font-bold text-slate-600 mb-1">出場時間 (分)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={newNote.minutesPlayed === '' ? '' : newNote.minutesPlayed}
+                              onFocus={e => e.target.select()}
+                              onChange={e => {
+                                const val = e.target.value;
+                                setNewNote({ ...newNote, minutesPlayed: val === '' ? '' : parseInt(val, 10) || 0 });
+                              }}
+                              className="w-full bg-white border border-slate-300 rounded p-2 text-center font-bold"
+                            />
                           </div>
                           <div>
-                            <div className="flex items-center space-x-2">
-                              <span className="font-bold text-slate-800 text-sm">{m.name}</span>
-                              <span className="text-[10px] px-2 py-0.5 bg-slate-100 font-bold rounded text-slate-600">
-                                {m.grade} / {m.position}
-                              </span>
-                            </div>
-                            <div className="flex items-center space-x-3 text-[11px] text-slate-500 mt-1">
-                              <span className="text-amber-600 font-bold flex items-center">
-                                <Flame className="w-3 h-3 mr-0.5 fill-amber-500" />
-                                {streak.currentStreak}日連続
-                              </span>
-                              <span>通算ノート: {notes.filter(n => n.studentId === m.id).length} 件</span>
-                            </div>
+                            <label className="block font-bold text-slate-600 mb-1">自分の得点</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={newNote.goals === '' ? '' : newNote.goals}
+                              onFocus={e => e.target.select()}
+                              onChange={e => {
+                                const val = e.target.value;
+                                setNewNote({ ...newNote, goals: val === '' ? '' : parseInt(val, 10) || 0 });
+                              }}
+                              className="w-full bg-white border border-slate-300 rounded p-2 text-center font-bold text-rose-600"
+                            />
+                          </div>
+                          <div>
+                            <label className="block font-bold text-slate-600 mb-1">自分のアシスト</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={newNote.assists === '' ? '' : newNote.assists}
+                              onFocus={e => e.target.select()}
+                              onChange={e => {
+                                const val = e.target.value;
+                                setNewNote({ ...newNote, assists: val === '' ? '' : parseInt(val, 10) || 0 });
+                              }}
+                              className="w-full bg-white border border-slate-300 rounded p-2 text-center font-bold text-blue-600"
+                            />
                           </div>
                         </div>
-
-                        <div className="flex items-center space-x-1">
-                          {m.id !== currentStudentId ? (
-                            <button
-                              onClick={() => { setCurrentStudentId(m.id); setActiveTab('notes'); }}
-                              className="text-xs font-bold bg-slate-100 hover:bg-emerald-600 hover:text-white text-slate-700 px-3 py-1.5 rounded transition"
-                            >
-                              選択
-                            </button>
-                          ) : (
-                            <span className="text-xs font-bold text-emerald-600 px-2 py-1 bg-emerald-100 rounded">
-                              選択中
-                            </span>
-                          )}
-                          <button
-                            onClick={() => handleDeleteMember(m.id)}
-                            className="text-slate-300 hover:text-rose-500 p-1.5 rounded transition"
-                            title="削除"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+                    </div>
+                  )}
 
-      </main>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-xs font-bold text-slate-600">コンディション</label>
+                        <span className="text-xs font-bold text-emerald-600">{newNote.condition} / 5</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="1"
+                        max="5"
+                        value={newNote.condition}
+                        onChange={e => setNewNote({ ...newNote, condition: parseInt(e.target.value) })}
+                        className="w-full accent-emerald-600 cursor-pointer"
+                      />
+                    </div>
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-xs font-bold text-slate-600">疲労度</label>
+                        <span className="text-xs font-bold text-amber-600">{newNote.fatigue} / 5</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="1"
+                        max="5"
+                        value={newNote.fatigue}
+                        onChange={e => setNewNote({ ...newNote, fatigue: parseInt(e.target.value) })}
+                        className="w-full accent-amber-600 cursor-pointer"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">睡眠時間 (時間)</label>
+                      <input
+                        type="number"
+                        step="0.5"
+                        value={newNote.sleepHours}
+                        onChange={e => setNewNote({ ...newNote, sleepHours: parseFloat(e.target.value) })}
+                        className="w-full bg-white border border-slate-300 rounded p-1.5 focus:ring-2 focus:ring-emerald-500 outline-none text-xs"
+                      />
+                    </div>
+                  </div>
 
-      {/* 🔐 パスコード認証モーダル */}
-      {showPasscodeModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl space-y-4 border border-slate-200">
-            <div className="text-center space-y-2">
-              <div className="p-3 bg-amber-100 text-amber-700 rounded-full inline-block">
-                <Lock className="w-6 h-6" />
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">タイトル <span className="text-rose-500">*</span></label>
+                    <input
+                      type="text"
+                      placeholder="例: パスアンドゴーの意識とB戦での守備意識"
+                      value={newNote.title}
+                      onChange={e => setNewNote({ ...newNote, title: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">今日の意識テーマ</label>
+                    <input
+                      type="text"
+                      placeholder="例: ボールを受ける前に首を2回振る・ファーストタッチで相手の逆をとる"
+                      value={newNote.theme}
+                      onChange={e => setNewNote({ ...newNote, theme: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-emerald-800 mb-1">👍 成果・うまくいったこと <span className="text-rose-500">*</span></label>
+                    <textarea
+                      rows="3"
+                      placeholder="意識して改善できた点、成功したプレイ"
+                      value={newNote.goodPoints}
+                      onChange={e => setNewNote({ ...newNote, goodPoints: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    ></textarea>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-amber-800 mb-1">⚠️ 課題・反省点</label>
+                    <textarea
+                      rows="3"
+                      placeholder="ミスした原因、判断が遅れた場面"
+                      value={newNote.badPoints}
+                      onChange={e => setNewNote({ ...newNote, badPoints: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    ></textarea>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-blue-800 mb-1">🚀 次の練習・試合に向けた具体的な行動</label>
+                    <input
+                      type="text"
+                      placeholder="例: トラップの瞬間に次のアクションを決めておく"
+                      value={newNote.nextAction}
+                      onChange={e => setNewNote({ ...newNote, nextAction: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                    />
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      type="submit"
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-lg shadow transition flex items-center justify-center text-sm"
+                    >
+                      <Icon name="send" className="w-4 h-4 mr-2" />
+                      振り返りノートを提出する
+                    </button>
+                  </div>
+                </form>
               </div>
-              <h3 className="font-bold text-slate-800 text-base">監督・コーチ専用エリア</h3>
-              <p className="text-xs text-slate-500">認証用パスコードを入力してください。</p>
-            </div>
+            )}
 
-            <form onSubmit={handleVerifyPasscode} className="space-y-3">
-              <input
-                type="password"
-                placeholder="パスコード"
-                value={inputPasscode}
-                onChange={e => setInputPasscode(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-center text-lg font-mono tracking-widest focus:ring-2 focus:ring-amber-500 outline-none"
-                autoFocus
-              />
+            {/* 3. 全員の振り返り */}
+            {activeTab === 'team_notes' && (
+              <div className="space-y-4">
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <h2 className="text-base font-bold text-slate-800 flex items-center">
+                      <Icon name="users" className="w-5 h-5 text-emerald-600 mr-2" />
+                      全員の振り返り・MOM受賞共有
+                    </h2>
+                    <span className="text-xs text-slate-500 font-medium">✨ 仲間のプレイやMOMの振り返りを参考にして成長しよう！</span>
+                  </div>
 
-              <div className="flex justify-end space-x-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowPasscodeModal(false)}
-                  className="px-4 py-2 bg-slate-100 text-slate-600 text-xs font-bold rounded-lg transition"
-                >
-                  キャンセル
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg shadow transition"
-                >
-                  解除して入場
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 監督返信モーダル */}
-      {selectedNote && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-4 border border-slate-200 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center border-b pb-3">
-              <div>
-                <h3 className="font-bold text-slate-800 text-base">監督・コーチからのフィードバック</h3>
-                <p className="text-xs text-slate-500">対象: {selectedNote.studentName} の振り返り ({selectedNote.date})</p>
-              </div>
-              <button
-                onClick={() => setSelectedNote(null)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold px-2"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">差出人</label>
-              <input
-                type="text"
-                value={coachName}
-                onChange={e => setCoachName(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-300 rounded p-2 text-xs"
-              />
-            </div>
-
-            <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs space-y-1">
-              <p className="font-bold text-slate-800">{selectedNote.title}</p>
-              <p className="text-slate-600"><span className="text-emerald-700 font-bold">成果:</span> {selectedNote.goodPoints}</p>
-              <p className="text-slate-600"><span className="text-amber-700 font-bold">課題:</span> {selectedNote.badPoints}</p>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex justify-between items-center bg-amber-50 p-3 rounded-lg border border-amber-200">
-                <div>
-                  <label className="block text-xs font-bold text-amber-900">評価（5段階）</label>
-                  <div className="flex space-x-1 mt-1">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <button
-                        key={star}
-                        type="button"
-                        onClick={() => setReplyRating(star)}
-                        className={`p-1 rounded transition ${star <= replyRating ? 'text-amber-400' : 'text-slate-300'}`}
-                      >
-                        <Star className="w-5 h-5 fill-current" />
-                      </button>
-                    ))}
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="relative flex-1">
+                      <Icon name="search" className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="選手名・対戦相手・テーマ・成果で検索..."
+                        value={teamSearchQuery}
+                        onChange={(e) => setTeamSearchQuery(e.target.value)}
+                        className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                      />
+                    </div>
+                    <select
+                      value={selectedStudentFilter}
+                      onChange={(e) => setSelectedStudentFilter(e.target.value)}
+                      className="bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-700"
+                    >
+                      <option value="all">全員のノート</option>
+                      {members.map(m => (
+                        <option key={m.id} value={m.id}>{m.name} ({m.position})</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
-                <label className="flex items-center space-x-2 text-xs font-bold text-slate-700 cursor-pointer">
+                <div className="space-y-3">
+                  {teamFilteredNotes.length === 0 ? (
+                    <div className="p-8 text-center bg-white rounded-xl text-slate-400 text-xs border">
+                      提出されたノートはありません。
+                    </div>
+                  ) : (
+                    teamFilteredNotes.map(n => (
+                      <div key={n.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-2 hover:border-emerald-300 transition relative overflow-hidden">
+                        {n.isMom && (
+                          <div className="bg-gradient-to-r from-amber-500 to-yellow-400 text-white text-[11px] font-bold px-3 py-1 -mx-4 -mt-4 mb-3 flex items-center justify-between">
+                            <span className="flex items-center"><Icon name="trophy" className="w-3.5 h-3.5 mr-1" /> 👑 MOM受賞ノート</span>
+                            <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded">評価 ★5</span>
+                          </div>
+                        )}
+
+                        <div className="flex justify-between items-center border-b pb-2">
+                          <div className="flex items-center space-x-2">
+                            <span className="font-bold text-sm text-slate-800">{n.studentName}</span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${
+                              n.category?.includes('A戦') ? 'bg-rose-100 text-rose-700' :
+                              n.category?.includes('B戦') ? 'bg-indigo-100 text-indigo-700' :
+                              'bg-slate-100 text-slate-600'
+                            }`}>
+                              {n.category || n.type}
+                            </span>
+                            {n.opponent && (
+                              <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                                vs {n.opponent}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-xs text-slate-400 font-mono">{n.date}</span>
+                        </div>
+
+                        <h4 className="font-bold text-xs text-slate-800">{n.title}</h4>
+
+                        {n.theme && (
+                          <p className="text-xs text-emerald-800 font-medium bg-emerald-50/50 px-2.5 py-1 rounded">
+                            🎯 テーマ: {n.theme}
+                          </p>
+                        )}
+
+                        <div className="bg-emerald-50/60 p-2.5 rounded-lg text-xs">
+                          <span className="font-bold text-emerald-800 block text-[11px] mb-0.5">👍 成果・うまくいったこと:</span>
+                          <p className="text-slate-700">{n.goodPoints}</p>
+                        </div>
+
+                        {n.coachComment && (
+                          <div className="bg-amber-50 border border-amber-200 p-2.5 rounded-lg text-xs space-y-1">
+                            <span className="font-bold text-amber-900 block text-[11px]">💬 監督からのアドバイス:</span>
+                            <p className="text-slate-700">{n.coachComment}</p>
+                          </div>
+                        )}
+
+                        {n.nextAction && (
+                          <div className="text-xs text-blue-800 bg-blue-50/50 p-2 rounded">
+                            <span className="font-bold">🚀 次の行動: </span> {n.nextAction}
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 4. 目標設定 */}
+            {activeTab === 'goals' && (
+              <div className="space-y-4">
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                  <h2 className="text-lg font-bold text-slate-800 mb-2 flex items-center">
+                    <Icon name="target" className="w-5 h-5 text-emerald-600 mr-2" />
+                    目標設定 ({currentStudent ? currentStudent.name : '未選択'})
+                  </h2>
+
+                  <form onSubmit={handleSaveGoal} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">🏆 年間目標（今年度のゴール）</label>
+                      <textarea
+                        rows="3"
+                        value={currentGoal.yearGoal}
+                        onChange={e => setCurrentGoal({ ...currentGoal, yearGoal: e.target.value })}
+                        placeholder="例: インターハイ予選ベスト8進出・A戦スタメン定着"
+                        className="w-full bg-slate-50 border border-slate-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                      ></textarea>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">📅 今月のテーマ・月間目標</label>
+                      <textarea
+                        rows="3"
+                        value={currentGoal.monthGoal}
+                        onChange={e => setCurrentGoal({ ...currentGoal, monthGoal: e.target.value })}
+                        placeholder="例: B戦で結果を残してA戦昇格、逆足のロングパス精度向上面"
+                        className="w-full bg-slate-50 border border-slate-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                      ></textarea>
+                    </div>
+
+                    {role === 'student' && (
+                      <button
+                        type="submit"
+                        className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow transition"
+                      >
+                        目標を保存・更新する
+                      </button>
+                    )}
+                  </form>
+                </div>
+
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                  <h3 className="text-sm font-bold text-slate-800 mb-3">部員全員の目標一覧</h3>
+                  {members.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic">部員が登録されていません。</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {members.map(m => {
+                        const g = goals.find(item => item.studentId === m.id);
+                        return (
+                          <div key={m.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs">
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="font-bold text-slate-800">{m.name} ({m.position})</span>
+                              <span className="text-[10px] text-slate-400">更新: {g?.updatedAt || '未設定'}</span>
+                            </div>
+                            <div className="text-slate-600 space-y-1">
+                              <p><span className="font-semibold text-emerald-700">【年間】</span> {g?.yearGoal || '未設定'}</p>
+                              <p><span className="font-semibold text-blue-700">【今月】</span> {g?.monthGoal || '未設定'}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 5. ダッシュボード */}
+            {activeTab === 'dashboard' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center">
+                    <span className="text-xs text-slate-400 block font-bold">消化試合数</span>
+                    <span className="text-2xl font-black text-rose-600">{stats.matchCount} 試合</span>
+                  </div>
+                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center">
+                    <span className="text-xs text-slate-400 block font-bold">総得点数</span>
+                    <span className="text-2xl font-black text-emerald-600">{stats.totalGoals} 点</span>
+                  </div>
+                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center">
+                    <span className="text-xs text-slate-400 block font-bold">総アシスト数</span>
+                    <span className="text-2xl font-black text-blue-600">{stats.totalAssists} 回</span>
+                  </div>
+                  <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm text-center">
+                    <span className="text-xs text-slate-400 block font-bold">MOM選出数</span>
+                    <span className="text-2xl font-black text-amber-500">{stats.totalMoms} 回</span>
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                  <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center justify-between">
+                    <span className="flex items-center">
+                      <Icon name="flame" className="w-4 h-4 text-amber-500 mr-2 fill-amber-500" />
+                      部員の継続力ランキング ＆ スタッツ
+                    </span>
+                    <span className="text-xs text-slate-400 font-normal">※連続継続数順</span>
+                  </h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50 text-slate-500">
+                          <th className="py-2.5 px-3">順位</th>
+                          <th className="py-2.5 px-3">名前</th>
+                          <th className="py-2.5 px-3">Pos</th>
+                          <th className="py-2.5 px-3 text-center">🔥 連続提出</th>
+                          <th className="py-2.5 px-3 text-center">通算提出</th>
+                          <th className="py-2.5 px-3 text-center">得点</th>
+                          <th className="py-2.5 px-3 text-center">アシスト</th>
+                          <th className="py-2.5 px-3 text-center">👑 MOM</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {stats.studentStats.length === 0 ? (
+                          <tr>
+                            <td colSpan="8" className="py-6 text-center text-slate-400">データが存在しません。</td>
+                          </tr>
+                        ) : (
+                          stats.studentStats.map((st, idx) => (
+                            <tr key={st.id} className="hover:bg-slate-50">
+                              <td className="py-2.5 px-3 font-bold text-slate-500">#{idx + 1}</td>
+                              <td className="py-2.5 px-3 font-bold text-slate-800 flex items-center">
+                                {st.name}
+                                {st.moms > 0 && (
+                                  <span className="ml-1.5 bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.2 rounded font-bold">
+                                    👑×{st.moms}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 text-slate-500">{st.position}</td>
+                              <td className="py-2.5 px-3 text-center font-black text-amber-600">
+                                {st.currentStreak > 0 ? `${st.currentStreak}日` : '-'}
+                              </td>
+                              <td className="py-2.5 px-3 text-center font-bold text-slate-600">{st.totalDays}日</td>
+                              <td className="py-2.5 px-3 text-center font-bold text-rose-600">{st.goals}</td>
+                              <td className="py-2.5 px-3 text-center font-bold text-blue-600">{st.assists}</td>
+                              <td className="py-2.5 px-3 text-center font-bold text-amber-500">{st.moms} 回</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 6. 試合管理 */}
+            {activeTab === 'match_manage' && (
+              <div className="space-y-6">
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                  <div className="flex justify-between items-center border-b pb-3 mb-4">
+                    <div>
+                      <h2 className="text-base font-bold text-slate-800 flex items-center">
+                        <Icon name="trophy" className="w-5 h-5 text-amber-500 mr-2" />
+                        マネージャー・記録担当：試合情報の事前登録
+                      </h2>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        A戦/B戦ごとに試合日程や相手、スコアを登録しておくことで、部員がスムーズに振り返りを作成できます。
+                      </p>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleCreateMatch} className="space-y-4 text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">区分 (A戦/B戦)</label>
+                        <select
+                          value={newMatch.category}
+                          onChange={e => setNewMatch({ ...newMatch, category: e.target.value })}
+                          className="w-full bg-slate-50 border border-slate-300 rounded p-2 focus:ring-2 focus:ring-emerald-500 outline-none font-bold"
+                        >
+                          <option value="A戦 (公式戦)">A戦 (公式戦)</option>
+                          <option value="A戦 (TRM)">A戦 (TRM)</option>
+                          <option value="B戦 (TRM)">B戦 (TRM)</option>
+                          <option value="1本目/2本目">1本目/2本目</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">試合日</label>
+                        <input
+                          type="date"
+                          value={newMatch.date}
+                          onChange={e => setNewMatch({ ...newMatch, date: e.target.value })}
+                          className="w-full bg-slate-50 border border-slate-300 rounded p-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">大会名・区分</label>
+                        <input
+                          type="text"
+                          placeholder="例: 秋季大会 2回戦 / 練習試合"
+                          value={newMatch.competition}
+                          onChange={e => setNewMatch({ ...newMatch, competition: e.target.value })}
+                          className="w-full bg-slate-50 border border-slate-300 rounded p-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">対戦相手 <span className="text-rose-500">*</span></label>
+                        <input
+                          type="text"
+                          placeholder="例: 西高校A"
+                          value={newMatch.opponent}
+                          onChange={e => setNewMatch({ ...newMatch, opponent: e.target.value })}
+                          className="w-full bg-slate-50 border border-slate-300 rounded p-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-amber-50/50 p-3 rounded-lg border border-amber-200/60">
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">スコア (ウチ - 相手)</label>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="number"
+                            min="0"
+                            value={newMatch.ourScore === '' ? '' : newMatch.ourScore}
+                            onFocus={e => e.target.select()}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setNewMatch({ ...newMatch, ourScore: val === '' ? '' : parseInt(val, 10) || 0 });
+                            }}
+                            className="w-20 bg-white border border-slate-300 rounded p-2 text-center font-bold text-slate-800"
+                          />
+                          <span className="font-bold text-slate-500">-</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={newMatch.opponentScore === '' ? '' : newMatch.opponentScore}
+                            onFocus={e => e.target.select()}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setNewMatch({ ...newMatch, opponentScore: val === '' ? '' : parseInt(val, 10) || 0 });
+                            }}
+                            className="w-20 bg-white border border-slate-300 rounded p-2 text-center font-bold text-slate-800"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">基本システム (フォーメーション)</label>
+                        <select
+                          value={newMatch.formation}
+                          onChange={e => setNewMatch({ ...newMatch, formation: e.target.value })}
+                          className="w-full bg-white border border-slate-300 rounded p-2 outline-none"
+                        >
+                          <option value="4-3-3">4-3-3</option>
+                          <option value="4-4-2">4-4-2</option>
+                          <option value="3-5-2">3-5-2</option>
+                          <option value="4-2-3-1">4-2-3-1</option>
+                          <option value="3-4-3">3-4-3</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">マネージャーメモ・試合の総括</label>
+                      <textarea
+                        rows="2"
+                        placeholder="例: B戦1本目。前線からの守備ハメは意識できたが、ビルドアップの失点あり。"
+                        value={newMatch.notes}
+                        onChange={e => setNewMatch({ ...newMatch, notes: e.target.value })}
+                        className="w-full bg-slate-50 border border-slate-300 rounded p-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                      ></textarea>
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 px-6 rounded-lg shadow transition flex items-center justify-center text-xs"
+                    >
+                      <Icon name="save" className="w-4 h-4 mr-1.5" /> 試合データをチーム全体に共有登録する
+                    </button>
+                  </form>
+                </div>
+
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-3">
+                  <h3 className="font-bold text-slate-800 text-sm">共有中の登録済み試合リスト ({matches.length}件)</h3>
+                  {matches.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic">登録済みの試合データはありません。</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {matches.map(m => (
+                        <div key={m.id} className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs">
+                          <div>
+                            <div className="flex items-center space-x-2">
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                m.category?.includes('A戦') ? 'bg-rose-100 text-rose-700' : 'bg-indigo-100 text-indigo-700'
+                              }`}>
+                                {m.category || '試合'}
+                              </span>
+                              <span className="font-mono text-slate-400">{m.date}</span>
+                              <span className="font-bold text-slate-800">{m.competition || '試合'} vs {m.opponent}</span>
+                              <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-black">
+                                {m.ourScore} - {m.opponentScore}
+                              </span>
+                            </div>
+                            {m.notes && <p className="text-slate-500 text-[11px] mt-1">{m.notes}</p>}
+                          </div>
+
+                          <span className="text-[11px] bg-slate-200 text-slate-600 px-2 py-1 rounded">
+                            システム: {m.formation}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 7. 部員管理 */}
+            {activeTab === 'members' && (
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-6">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center border-b pb-3 gap-2">
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-800 flex items-center">
+                      <Icon name="user-plus" className="w-5 h-5 text-emerald-600 mr-2" />
+                      部員情報の管理・追加
+                    </h2>
+                    <p className="text-xs text-slate-500">部員やマネージャーをここから追加・管理できます。</p>
+                  </div>
+                  <button
+                    onClick={() => setShowAddMember(!showAddMember)}
+                    className="bg-emerald-600 text-white text-xs font-bold px-3.5 py-2 rounded-lg hover:bg-emerald-700 transition w-full sm:w-auto"
+                  >
+                    {showAddMember ? 'フォームを閉じる' : '+ 新規部員・マネージャー追加'}
+                  </button>
+                </div>
+
+                {showAddMember && (
+                  <form onSubmit={handleAddMember} className="bg-emerald-50/80 p-4 rounded-xl border border-emerald-200 space-y-3 text-xs shadow-inner">
+                    <h3 className="font-bold text-emerald-900 text-sm flex items-center">
+                      <Icon name="user-plus" className="w-4 h-4 mr-1 text-emerald-700" /> 新メンバーの入力
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">名前 <span className="text-rose-500">*</span></label>
+                        <input
+                          type="text"
+                          placeholder="例: 山田 太郎"
+                          value={editingMember.name}
+                          onChange={e => setEditingMember({ ...editingMember, name: e.target.value })}
+                          className="w-full bg-white border border-slate-300 rounded p-2 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">学年</label>
+                        <select
+                          value={editingMember.grade}
+                          onChange={e => setEditingMember({ ...editingMember, grade: e.target.value })}
+                          className="w-full bg-white border border-slate-300 rounded p-2 focus:outline-none"
+                        >
+                          <option value="1年">1年</option>
+                          <option value="2年">2年</option>
+                          <option value="3年">3年</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">ポジション / 役割</label>
+                        <select
+                          value={editingMember.position}
+                          onChange={e => setEditingMember({ ...editingMember, position: e.target.value })}
+                          className="w-full bg-white border border-slate-300 rounded p-2 focus:outline-none"
+                        >
+                          <option value="FW">FW</option>
+                          <option value="MF">MF</option>
+                          <option value="DF">DF</option>
+                          <option value="GK">GK</option>
+                          <option value="MG">マネージャー</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">背番号</label>
+                        <input
+                          type="number"
+                          placeholder="10 (MGは0)"
+                          value={editingMember.number}
+                          onChange={e => setEditingMember({ ...editingMember, number: e.target.value })}
+                          className="w-full bg-white border border-slate-300 rounded p-2 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="submit"
+                      className="bg-emerald-600 text-white font-bold px-5 py-2 rounded shadow hover:bg-emerald-700 transition"
+                    >
+                      部員を登録する
+                    </button>
+                  </form>
+                )}
+
+                <div className="space-y-3">
+                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">現在登録されているメンバー ({members.length}名)</h3>
+                  {members.length === 0 ? (
+                    <div className="bg-slate-50 p-8 text-center rounded-xl border border-dashed border-slate-300">
+                      <p className="text-xs text-slate-500">部員がまだ登録されていません。上のボタンから追加してください。</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {members.map(m => {
+                        const streak = calculateStreak(m.id);
+                        return (
+                          <div
+                            key={m.id}
+                            className={`p-3.5 rounded-xl border flex justify-between items-center transition ${
+                              m.id === currentStudentId ? 'border-emerald-500 bg-emerald-50/30 ring-1 ring-emerald-500' : 'border-slate-200 bg-white'
+                            }`}
+                          >
+                            <div className="flex items-center space-x-3">
+                              <div className="w-10 h-10 rounded-full bg-emerald-800 text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
+                                {m.position === 'MG' ? 'MG' : `#${m.number}`}
+                              </div>
+                              <div>
+                                <div className="flex items-center space-x-2">
+                                  <span className="font-bold text-slate-800 text-sm">{m.name}</span>
+                                  <span className="text-[10px] px-2 py-0.5 bg-slate-100 font-bold rounded text-slate-600">
+                                    {m.grade} / {m.position}
+                                  </span>
+                                </div>
+                                <div className="flex items-center space-x-3 text-[11px] text-slate-500 mt-1">
+                                  <span className="text-amber-600 font-bold flex items-center">
+                                    <Icon name="flame" className="w-3 h-3 mr-0.5 text-amber-500 fill-amber-500" />
+                                    {streak.currentStreak}日連続
+                                  </span>
+                                  <span>通算ノート: {notes.filter(n => n.studentId === m.id).length} 件</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center space-x-1">
+                              {m.id !== currentStudentId ? (
+                                <button
+                                  onClick={() => { setCurrentStudentId(m.id); setActiveTab('notes'); }}
+                                  className="text-xs font-bold bg-slate-100 hover:bg-emerald-600 hover:text-white text-slate-700 px-3 py-1.5 rounded transition"
+                                >
+                                  選択
+                                </button>
+                              ) : (
+                                <span className="text-xs font-bold text-emerald-600 px-2 py-1 bg-emerald-100 rounded">
+                                  選択中
+                                </span>
+                              )}
+                              <button
+                                onClick={() => handleDeleteMember(m.id)}
+                                className="text-slate-300 hover:text-rose-500 p-1.5 rounded transition"
+                                title="削除"
+                              >
+                                <Icon name="trash-2" className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </main>
+
+          {/* Modal 1: Passcode */}
+          {showPasscodeModal && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl space-y-4 border border-slate-200">
+                <div className="text-center space-y-2">
+                  <div className="p-3 bg-amber-100 text-amber-700 rounded-full inline-block">
+                    <Icon name="lock" className="w-6 h-6" />
+                  </div>
+                  <h3 className="font-bold text-slate-800 text-base">監督・コーチ専用エリア</h3>
+                  <p className="text-xs text-slate-500">認証用パスコードを入力してください。（初期コード: 1234）</p>
+                </div>
+
+                <form onSubmit={handleVerifyPasscode} className="space-y-3">
                   <input
-                    type="checkbox"
-                    checked={isMomCheck}
-                    onChange={e => setIsMomCheck(e.target.checked)}
-                    className="rounded text-amber-500 focus:ring-amber-400 w-4 h-4"
+                    type="password"
+                    placeholder="パスコード"
+                    value={inputPasscode}
+                    onChange={e => setInputPasscode(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-center text-lg font-mono tracking-widest focus:ring-2 focus:ring-amber-500 outline-none"
+                    autoFocus
                   />
-                  <span>👑 本日のMOMに選出（全員に公開）</span>
-                </label>
-              </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">アドバイス・コメント</label>
-                <textarea
-                  rows="4"
-                  value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
-                  placeholder="良かった点の承認や具体的アドバイスを記述してください。"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-amber-500 outline-none"
-                ></textarea>
+                  <div className="flex justify-end space-x-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowPasscodeModal(false)}
+                      className="px-4 py-2 bg-slate-100 text-slate-600 text-xs font-bold rounded-lg transition"
+                    >
+                      キャンセル
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg shadow transition"
+                    >
+                      解除して入場
+                    </button>
+                  </div>
+                </form>
               </div>
             </div>
+          )}
 
-            <div className="flex justify-end space-x-2 pt-2 border-t">
-              <button
-                onClick={() => setSelectedNote(null)}
-                className="px-4 py-2 bg-slate-100 text-slate-600 text-xs font-bold rounded-lg transition"
-              >
-                キャンセル
-              </button>
-              <button
-                onClick={handleSendReply}
-                className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg shadow transition flex items-center"
-              >
-                <Send className="w-3.5 h-3.5 mr-1.5" />
-                送信する
-              </button>
+          {/* Modal 2: Coach Feedback */}
+          {selectedNote && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-4 border border-slate-200 max-h-[90vh] overflow-y-auto">
+                <div className="flex justify-between items-center border-b pb-3">
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-base">監督・コーチからのフィードバック</h3>
+                    <p className="text-xs text-slate-500">対象: {selectedNote.studentName} の振り返り ({selectedNote.date})</p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedNote(null)}
+                    className="text-slate-400 hover:text-slate-600 text-sm font-bold px-2"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">差出人</label>
+                  <input
+                    type="text"
+                    value={coachName}
+                    onChange={e => setCoachName(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded p-2 text-xs"
+                  />
+                </div>
+
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs space-y-1">
+                  <p className="font-bold text-slate-800">{selectedNote.title}</p>
+                  <p className="text-slate-600"><span className="text-emerald-700 font-bold">成果:</span> {selectedNote.goodPoints}</p>
+                  <p className="text-slate-600"><span className="text-amber-700 font-bold">課題:</span> {selectedNote.badPoints}</p>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center bg-amber-50 p-3 rounded-lg border border-amber-200">
+                    <div>
+                      <label className="block text-xs font-bold text-amber-900">評価（5段階）</label>
+                      <div className="flex space-x-1 mt-1">
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <button
+                            key={star}
+                            type="button"
+                            onClick={() => setReplyRating(star)}
+                            className={`p-1 rounded transition ${star <= replyRating ? 'text-amber-400' : 'text-slate-300'}`}
+                          >
+                            <Icon name="star" className="w-5 h-5 fill-current" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <label className="flex items-center space-x-2 text-xs font-bold text-slate-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isMomCheck}
+                        onChange={e => setIsMomCheck(e.target.checked)}
+                        className="rounded text-amber-500 focus:ring-amber-400 w-4 h-4"
+                      />
+                      <span>👑 本日のMOMに選出（全員に公開）</span>
+                    </label>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">アドバイス・コメント</label>
+                    <textarea
+                      rows="4"
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      placeholder="良かった点の承認や具体的アドバイスを記述してください。"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-amber-500 outline-none"
+                    ></textarea>
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-2 pt-2 border-t">
+                  <button
+                    onClick={() => setSelectedNote(null)}
+                    className="px-4 py-2 bg-slate-100 text-slate-600 text-xs font-bold rounded-lg transition"
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={handleSendReply}
+                    className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg shadow transition flex items-center"
+                  >
+                    <Icon name="send" className="w-3.5 h-3.5 mr-1.5" />
+                    送信する
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* Modal 3: Student Reply */}
+          {replyToCoachNote && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-4 border border-slate-200">
+                <div className="flex justify-between items-center border-b pb-3">
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-base">監督のアドバイスへ返答</h3>
+                    <p className="text-xs text-slate-500">感謝や次の行動への決意を伝えましょう</p>
+                  </div>
+                  <button
+                    onClick={() => setReplyToCoachNote(null)}
+                    className="text-slate-400 hover:text-slate-600 text-sm font-bold px-2"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 text-xs space-y-1">
+                  <p className="font-bold text-amber-900">{replyToCoachNote.coachName || '監督・コーチ'} からのアドバイス:</p>
+                  <p className="text-slate-700">{replyToCoachNote.coachComment}</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">返答メッセージ</label>
+                  <textarea
+                    rows="3"
+                    value={studentReplyText}
+                    onChange={e => setStudentReplyText(e.target.value)}
+                    placeholder="例: アドバイスありがとうございます！明日の練習で早速意識してやってみます！"
+                    className="w-full bg-slate-50 border border-slate-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                  ></textarea>
+                </div>
+
+                <div className="flex justify-end space-x-2 pt-2 border-t">
+                  <button
+                    onClick={() => setReplyToCoachNote(null)}
+                    className="px-4 py-2 bg-slate-100 text-slate-600 text-xs font-bold rounded-lg transition"
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    onClick={handleSendStudentReply}
+                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow transition flex items-center"
+                  >
+                    <Icon name="send" className="w-3.5 h-3.5 mr-1.5" />
+                    送信する
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
-      )}
+      );
+    }
 
-      {/* 選手から監督への返答モーダル */}
-      {replyToCoachNote && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-4 border border-slate-200">
-            <div className="flex justify-between items-center border-b pb-3">
-              <div>
-                <h3 className="font-bold text-slate-800 text-base">監督のアドバイスへ返答</h3>
-                <p className="text-xs text-slate-500">感謝や次の行動への決意を伝えましょう</p>
-              </div>
-              <button
-                onClick={() => setReplyToCoachNote(null)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold px-2"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 text-xs space-y-1">
-              <p className="font-bold text-amber-900">{replyToCoachNote.coachName || '監督・コーチ'} からのアドバイス:</p>
-              <p className="text-slate-700">{replyToCoachNote.coachComment}</p>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">返答メッセージ</label>
-              <textarea
-                rows="3"
-                value={studentReplyText}
-                onChange={e => setStudentReplyText(e.target.value)}
-                placeholder="例: アドバイスありがとうございます！明日の練習で早速意識してやってみます！"
-                className="w-full bg-slate-50 border border-slate-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
-              ></textarea>
-            </div>
-
-            <div className="flex justify-end space-x-2 pt-2 border-t">
-              <button
-                onClick={() => setReplyToCoachNote(null)}
-                className="px-4 py-2 bg-slate-100 text-slate-600 text-xs font-bold rounded-lg transition"
-              >
-                キャンセル
-              </button>
-              <button
-                onClick={handleSendStudentReply}
-                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow transition flex items-center"
-              >
-                <Send className="w-3.5 h-3.5 mr-1.5" />
-                送信する
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<SoccerNoteApp />);
+  </script>
+</body>
+</html>
