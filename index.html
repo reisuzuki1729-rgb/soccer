@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
@@ -34,14 +34,8 @@
       return <i data-lucide={name} className={className} {...props}></i>;
     };
 
-    // 初期データ
-    const INITIAL_MEMBERS = [];
-    const INITIAL_MATCHES = [];
-    const INITIAL_NOTES = [];
-    const INITIAL_GOALS = [];
-
     function SoccerNoteApp() {
-      // --- ローカルストレージフック ---
+      // --- ローカルストレージフック (安全な自動保存・復元) ---
       const usePersistentState = (key, initialValue) => {
         const [state, setState] = useState(() => {
           try {
@@ -64,19 +58,18 @@
         return [state, setState];
       };
 
-      const [members, setMembers] = usePersistentState('members', INITIAL_MEMBERS);
-      const [matches, setMatches] = usePersistentState('matches', INITIAL_MATCHES);
-      const [notes, setNotes] = usePersistentState('notes', INITIAL_NOTES);
-      const [goals, setGoals] = usePersistentState('goals', INITIAL_GOALS);
+      const [members, setMembers] = usePersistentState('members', []);
+      const [matches, setMatches] = usePersistentState('matches', []);
+      const [notes, setNotes] = usePersistentState('notes', []);
+      const [goals, setGoals] = usePersistentState('goals', []);
 
       const [role, setRole] = useState('student');
-      const [isCoachAuthenticated, setIsCoachAuthenticated] = useState(false);
       const [coachPasscode] = useState('1234');
       const [inputPasscode, setInputPasscode] = useState('');
       const [showPasscodeModal, setShowPasscodeModal] = useState(false);
 
       const [currentStudentId, setCurrentStudentId] = useState(members[0]?.id || '');
-      const [activeTab, setActiveTab] = useState(members.length === 0 ? 'members' : 'notes');
+      const [activeTab, setActiveTab] = useState('notes');
       
       const [filterType, setFilterType] = useState('all');
       const [selectedStudentFilter, setSelectedStudentFilter] = useState('all');
@@ -93,10 +86,10 @@
         notes: ''
       });
 
+      // ノート入力（タイトル項目を削除）
       const [newNote, setNewNote] = useState({
         type: '試合',
         category: 'A戦 (公式戦)',
-        title: '',
         date: new Date().toISOString().split('T')[0],
         condition: 3,
         fatigue: 3,
@@ -122,7 +115,7 @@
       const [studentReplyText, setStudentReplyText] = useState('');
 
       const [editingMember, setEditingMember] = useState({ name: '', grade: '1年', position: 'FW', number: '' });
-      const [showAddMember, setShowAddMember] = useState(members.length === 0);
+      const [showAddMember, setShowAddMember] = useState(false);
       const [currentGoal, setCurrentGoal] = useState({ yearGoal: '', monthGoal: '' });
 
       const currentStudent = members.find(m => m.id === currentStudentId) || members[0] || null;
@@ -201,8 +194,7 @@
             selectedMatchId: match.id,
             category: match.category || 'A戦 (公式戦)',
             date: match.date,
-            customOpponent: match.opponent,
-            title: `【${match.category || '試合'}】${match.competition || ''} vs ${match.opponent}`
+            customOpponent: match.opponent
           }));
         }
       };
@@ -235,8 +227,8 @@
           alert('先に部員登録を行ってください。');
           return;
         }
-        if (!newNote.title || !newNote.goodPoints) {
-          alert('タイトルと「成果・良かった点」は必須です。');
+        if (!newNote.goodPoints) {
+          alert('「成果・良かった点」は必須項目です。');
           return;
         }
 
@@ -261,10 +253,20 @@
           }
         }
 
+        // タイトルの自動生成
+        let generatedTitle = '';
+        if (newNote.type === '試合') {
+          const oppName = matchInfo.opponent || newNote.customOpponent;
+          generatedTitle = `${newNote.category}${oppName ? ` vs ${oppName}` : ''}`;
+        } else {
+          generatedTitle = `【練習振り返り】${newNote.category}`;
+        }
+
         const created = {
           id: `n_${Date.now()}`,
           studentId: currentStudent.id,
           studentName: currentStudent.name,
+          title: generatedTitle,
           ...newNote,
           ...matchInfo,
           coachComment: '',
@@ -282,7 +284,6 @@
         setNewNote({
           type: '試合',
           category: 'A戦 (公式戦)',
-          title: '',
           date: new Date().toISOString().split('T')[0],
           condition: 3,
           fatigue: 3,
@@ -302,7 +303,6 @@
       const handleVerifyPasscode = (e) => {
         e.preventDefault();
         if (inputPasscode === coachPasscode) {
-          setIsCoachAuthenticated(true);
           setRole('coach');
           setShowPasscodeModal(false);
           setInputPasscode('');
@@ -392,7 +392,8 @@
           number: parseInt(editingMember.number) || 0
         };
         
-        setMembers([...members, newM]);
+        const updatedMembers = [...members, newM];
+        setMembers(updatedMembers);
         setCurrentStudentId(newM.id);
         setEditingMember({ name: '', grade: '1年', position: 'FW', number: '' });
         setShowAddMember(false);
@@ -425,7 +426,7 @@
           const q = teamSearchQuery.toLowerCase();
           return (
             note.studentName.toLowerCase().includes(q) ||
-            note.title.toLowerCase().includes(q) ||
+            (note.title && note.title.toLowerCase().includes(q)) ||
             (note.opponent && note.opponent.toLowerCase().includes(q)) ||
             note.goodPoints.toLowerCase().includes(q) ||
             note.theme.toLowerCase().includes(q)
@@ -744,7 +745,7 @@
                               </span>
                             )}
                           </div>
-                          <h3 className="font-bold text-base text-slate-800">{note.title}</h3>
+                          <h3 className="font-bold text-base text-slate-800">{note.title || '振り返りノート'}</h3>
                         </div>
 
                         <div>
@@ -912,7 +913,7 @@
               </div>
             )}
 
-            {/* 2. ノートを書く */}
+            {/* 2. ノートを書く（タイトル入力欄を削除・自動設定） */}
             {activeTab === 'create' && role === 'student' && (
               <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                 <h2 className="text-lg font-bold text-slate-800 mb-4 pb-2 border-b flex items-center justify-between">
@@ -1096,17 +1097,6 @@
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">タイトル <span className="text-rose-500">*</span></label>
-                    <input
-                      type="text"
-                      placeholder="例: パスアンドゴーの意識とB戦での守備意識"
-                      value={newNote.title}
-                      onChange={e => setNewNote({ ...newNote, title: e.target.value })}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-emerald-500 outline-none"
-                    />
-                  </div>
-
-                  <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1">今日の意識テーマ</label>
                     <input
                       type="text"
@@ -1233,7 +1223,7 @@
                           <span className="text-xs text-slate-400 font-mono">{n.date}</span>
                         </div>
 
-                        <h4 className="font-bold text-xs text-slate-800">{n.title}</h4>
+                        <h4 className="font-bold text-xs text-slate-800">{n.title || '振り返り'}</h4>
 
                         {n.theme && (
                           <p className="text-xs text-emerald-800 font-medium bg-emerald-50/50 px-2.5 py-1 rounded">
@@ -1725,7 +1715,7 @@
                     データ保護 ＆ バックアップ管理
                   </h2>
                   <p className="text-xs text-slate-500 mt-1">
-                    ブラウザのキャッシュ消去などで大事なデータが消えないよう、定期的にバックアップファイルをダウンロード保存してください。
+                    ブラウザのキャッシュ消去などで大事なデータが消えないよう、定期的にバックアップファイルをダウンロード保存できます。
                   </p>
                 </div>
 
@@ -1737,7 +1727,7 @@
                       1. データをバックアップ保存（JSON）
                     </h3>
                     <p className="text-[11px] text-slate-500">
-                      部員データ、振り返りノート、試合結果、目標などすべてのデータを1つのファイルとしてパソコンやスマホに保存します。
+                      部員データ、振り返りノート、試合結果、目標などすべてのデータを1つのファイルとして保存します。
                     </p>
                     <button
                       onClick={() => {
@@ -1763,7 +1753,7 @@
                       2. バックアップファイルから復元
                     </h3>
                     <p className="text-[11px] text-slate-500">
-                      以前保存したバックアップ（.json）を読み込んでデータを復元・復旧します。
+                      以前保存したバックアップ（.json）を読み込んでデータを復元します。
                     </p>
                     <label className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2.5 rounded-lg shadow transition flex items-center justify-center cursor-pointer">
                       <Icon name="upload" className="w-4 h-4 mr-1.5" /> バックアップファイルを選択して復元
@@ -1801,7 +1791,7 @@
                     データリセット（警告）
                   </h3>
                   <p className="text-[11px] text-rose-700">
-                    現在の端末に保存されている全データを消去します。バックアップをあらかじめダウンロードしておくことを推奨します。
+                    現在の端末に保存されている全データを消去します。
                   </p>
                   <button
                     onClick={() => {
