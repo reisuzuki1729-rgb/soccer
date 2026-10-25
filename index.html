@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
@@ -86,7 +86,7 @@
         notes: ''
       });
 
-      // ノート入力（タイトル項目を削除）
+      // ノート入力（タイトル項目を自動生成）
       const [newNote, setNewNote] = useState({
         type: '試合',
         category: 'A戦 (公式戦)',
@@ -253,7 +253,6 @@
           }
         }
 
-        // タイトルの自動生成
         let generatedTitle = '';
         if (newNote.type === '試合') {
           const oppName = matchInfo.opponent || newNote.customOpponent;
@@ -308,7 +307,7 @@
           setInputPasscode('');
           setActiveTab('notes');
         } else {
-          alert('パスコードが正しくありません。');
+          alert('パスコードが正しくありません。（初期コード: 1234）');
         }
       };
 
@@ -913,7 +912,7 @@
               </div>
             )}
 
-            {/* 2. ノートを書く（タイトル入力欄を削除・自動設定） */}
+            {/* 2. ノートを書く */}
             {activeTab === 'create' && role === 'student' && (
               <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                 <h2 className="text-lg font-bold text-slate-800 mb-4 pb-2 border-b flex items-center justify-between">
@@ -1822,7 +1821,7 @@
                     <Icon name="lock" className="w-6 h-6" />
                   </div>
                   <h3 className="font-bold text-slate-800 text-base">監督・コーチ専用エリア</h3>
-                  <p className="text-xs text-slate-500">認証用パスコードを入力してください。</p>
+                  <p className="text-xs text-slate-500">認証用パスコードを入力してください。（初期値: 1234）</p>
                 </div>
 
                 <form onSubmit={handleVerifyPasscode} className="space-y-3">
