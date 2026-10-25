@@ -170,11 +170,8 @@ export default function SoccerNoteApp() {
     yesterdayDate.setDate(yesterdayDate.getDate() - 1);
     const yesterday = yesterdayDate.toISOString().split('T')[0];
 
-    // 今日または昨日に記録がある場合からカウントを開始
-    let checkDate = new Date(uniqueDates[0]);
-    const latestDateStr = uniqueDates[0];
-
     // 最新の記録が今日または昨日でなければストリーク途切れ
+    const latestDateStr = uniqueDates[0];
     if (latestDateStr !== today && latestDateStr !== yesterday) {
       return { currentStreak: 0, totalDays };
     }
