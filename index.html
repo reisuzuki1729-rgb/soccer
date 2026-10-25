@@ -483,165 +483,7 @@
               <div className="flex items-center space-x-2">
                 {role === 'student' ? (
                   <button
-                    onClick={() => {
-                      if (isCoachAuthenticated) {
-                        setRole('coach');
-                        setActiveTab('notes');
-                      } else {
-                        setShowPasscodeModal(true);
-                      }
-                    }}
-                    className="bg-emerald-800 hover:bg-emerald-700 text-emerald-100 text-xs px-3 py-1.5 rounded-lg font-bold flex items-center space-x-1 border border-emerald-700 transition"
-                  >
-                    <Icon name="lock" className="w-3.5 h-3.5 mr-1" /> 監督・コーチモードへ
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setRole('student')}
-                    className="bg-amber-500 hover:bg-amber-600 text-slate-900 text-xs px-3 py-1.5 rounded-lg font-bold flex items-center space-x-1 shadow transition"
-                  >
-                    <Icon name="user" className="w-3.5 h-3.5 mr-1" /> 選手モードに戻る
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {role === 'student' && (
-              <div className="bg-emerald-800 px-4 py-2 border-t border-emerald-600/50">
-                <div className="max-w-4xl mx-auto flex items-center justify-between text-xs flex-wrap gap-2">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-emerald-200 font-medium">現在の記入者:</span>
-                    {members.length > 0 ? (
-                      <select
-                        value={currentStudentId}
-                        onChange={(e) => setCurrentStudentId(e.target.value)}
-                        className="bg-emerald-900 border border-emerald-600 text-white rounded px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-amber-400 font-bold"
-                      >
-                        {members.map(m => (
-                          <option key={m.id} value={m.id}>
-                            {m.name} ({m.position === 'MG' ? 'マネージャー' : `${m.grade} / ${m.position} #${m.number}`})
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <span className="text-amber-300 font-bold">※部員が未登録です</span>
-                    )}
-                  </div>
-
-                  {currentStudent && (
-                    <div className="flex items-center space-x-3 bg-emerald-900/80 px-3 py-1 rounded-full border border-emerald-700">
-                      <div className="flex items-center space-x-1 text-amber-400 font-bold">
-                        <Icon name="flame" className="w-4 h-4 text-amber-400 fill-amber-400 animate-pulse" />
-                        <span>{studentStreakInfo.currentStreak}日 連続継続中！</span>
-                      </div>
-                      <span className="text-emerald-400">|</span>
-                      <div className="text-emerald-200 text-[11px]">
-                        通算 <b>{studentStreakInfo.totalDays}</b> 日間提出
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex items-center space-x-3">
-                    <button
-                      onClick={() => { setActiveTab('members'); setShowAddMember(true); }}
-                      className="text-emerald-200 hover:text-white underline flex items-center text-[11px]"
-                    >
-                      <Icon name="user-plus" className="w-3 h-3 mr-1" /> 部員追加・編集
-                    </button>
-                    <button
-                      onClick={() => {
-                        const data = { members, matches, notes, goals };
-                        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `soccer_note_backup_${new Date().toISOString().split('T')[0]}.json`;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                      }}
-                      className="text-amber-300 hover:text-amber-200 underline flex items-center text-[11px] font-bold"
-                      title="データをファイルにバックアップ保存"
-                    >
-                      <Icon name="download" className="w-3 h-3 mr-1" /> データ保存
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </header>
-
-          {/* Navigation */}
-          <nav className="bg-white border-b border-slate-200 sticky top-[57px] z-20 shadow-sm">
-            <div className="max-w-4xl mx-auto px-2 flex overflow-x-auto text-sm font-medium">
-              <button
-                onClick={() => setActiveTab('notes')}
-                className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
-                  activeTab === 'notes' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <Icon name="book-open" className="w-4 h-4 mr-1.5" />
-                {role === 'student' ? '自分のノート' : '監督レビュー一覧'}
-                {role === 'coach' && (
-                  <span className="ml-1.5 bg-amber-500 text-white text-xs px-1.5 py-0.5 rounded-full font-normal">
-                    {notes.filter(n => n.status === 'pending').length}未読
-                  </span>
-                )}
-              </button>
-
-              {role === 'student' && (
-                <button
-                  onClick={() => setActiveTab('create')}
-                  className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
-                    activeTab === 'create' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  <Icon name="plus" className="w-4 h-4 mr-1.5" />
-                  ノートを書く
-                </button>
-              )}
-
-              <button
-                onClick={() => setActiveTab('team_notes')}
-                className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
-                  activeTab === 'team_notes' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <Icon name="users" className="w-4 h-4 mr-1.5" />
-                全員の振り返り・MOM共有
-              </button>
-
-              <button
-                onClick={() => setActiveTab('goals')}
-                className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
-                  activeTab === 'goals' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <Icon name="target" className="w-4 h-4 mr-1.5" />
-                目標設定
-              </button>
-
-              <button
-                onClick={() => setActiveTab('dashboard')}
-                className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
-                  activeTab === 'dashboard' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <Icon name="bar-chart-2" className="w-4 h-4 mr-1.5" />
-                継続率・スタッツ分析
-              </button>
-
-              <button
-                onClick={() => setActiveTab('match_manage')}
-                className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
-                  activeTab === 'match_manage' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <Icon name="trophy" className="w-4 h-4 mr-1.5 text-amber-500" />
-                試合の事前登録（A戦/B戦）
-              </button>
-
-              <button
-                onClick={() => setActiveTab('members')}
+                onClick={() => { setActiveTab('members'); setShowAddMember(true); }}
                 className={`py-3 px-3.5 flex items-center border-b-2 transition whitespace-nowrap ${
                   activeTab === 'members' ? 'border-emerald-600 text-emerald-700 font-bold' : 'border-transparent text-slate-500 hover:text-slate-800'
                 }`}
@@ -1628,6 +1470,146 @@
                       ))}
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* 7. 部員登録・管理 */}
+            {activeTab === 'members' && (
+              <div className="space-y-6">
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                  <div className="flex justify-between items-center border-b pb-3 mb-4">
+                    <div>
+                      <h2 className="text-base font-bold text-slate-800 flex items-center">
+                        <Icon name="user-plus" className="w-5 h-5 text-emerald-600 mr-2" />
+                        部員・選手の登録＆管理
+                      </h2>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        選手やマネージャーを登録することで、各自のノート作成や統計分析が可能になります。
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setShowAddMember(!showAddMember)}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3.5 py-2 rounded-lg transition flex items-center shadow-sm"
+                    >
+                      <Icon name={showAddMember ? "minus" : "plus"} className="w-3.5 h-3.5 mr-1" />
+                      {showAddMember ? 'フォームを閉じる' : '新規部員を追加'}
+                    </button>
+                  </div>
+
+                  {showAddMember && (
+                    <form onSubmit={handleAddMember} className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4 mb-4 text-xs">
+                      <h3 className="font-bold text-slate-700 flex items-center">
+                        <Icon name="user-check" className="w-4 h-4 mr-1.5 text-emerald-600" />
+                        新規部員の追加情報
+                      </h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                        <div>
+                          <label className="block font-bold text-slate-600 mb-1">氏名 <span className="text-rose-500">*</span></label>
+                          <input
+                            type="text"
+                            placeholder="例: 山田 太郎"
+                            value={editingMember.name}
+                            onChange={e => setEditingMember({ ...editingMember, name: e.target.value })}
+                            className="w-full bg-white border border-slate-300 rounded p-2 focus:ring-2 focus:ring-emerald-500 outline-none"
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block font-bold text-slate-600 mb-1">学年</label>
+                          <select
+                            value={editingMember.grade}
+                            onChange={e => setEditingMember({ ...editingMember, grade: e.target.value })}
+                            className="w-full bg-white border border-slate-300 rounded p-2 focus:ring-2 focus:ring-emerald-500 outline-none font-bold"
+                          >
+                            <option value="1年">1年</option>
+                            <option value="2年">2年</option>
+                            <option value="3年">3年</option>
+                            <option value="OB/コーチ">OB/コーチ</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block font-bold text-slate-600 mb-1">ポジション</label>
+                          <select
+                            value={editingMember.position}
+                            onChange={e => setEditingMember({ ...editingMember, position: e.target.value })}
+                            className="w-full bg-white border border-slate-300 rounded p-2 focus:ring-2 focus:ring-emerald-500 outline-none font-bold"
+                          >
+                            <option value="FW">FW (フォワード)</option>
+                            <option value="MF">MF (ミッドフィルダー)</option>
+                            <option value="DF">DF (ディフェンダー)</option>
+                            <option value="GK">GK (ゴールキーパー)</option>
+                            <option value="MG">MG (マネージャー)</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block font-bold text-slate-600 mb-1">背番号</label>
+                          <input
+                            type="number"
+                            placeholder="10"
+                            value={editingMember.number}
+                            onChange={e => setEditingMember({ ...editingMember, number: e.target.value })}
+                            className="w-full bg-white border border-slate-300 rounded p-2 focus:ring-2 focus:ring-emerald-500 outline-none font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end space-x-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowAddMember(false)}
+                          className="px-4 py-2 bg-slate-200 text-slate-600 font-bold rounded-lg hover:bg-slate-300 transition"
+                        >
+                          キャンセル
+                        </button>
+                        <button
+                          type="submit"
+                          className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow transition flex items-center"
+                        >
+                          <Icon name="check" className="w-3.5 h-3.5 mr-1" />
+                          部員を登録する
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  <div className="space-y-3">
+                    <h3 className="font-bold text-slate-800 text-sm">登録済み部員一覧 ({members.length}名)</h3>
+                    {members.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic bg-slate-50 p-4 rounded-lg border border-dashed text-center">
+                        登録済みの部員がいません。「新規部員を追加」ボタンから登録してください。
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                        {members.map(m => (
+                          <div key={m.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex justify-between items-center text-xs hover:border-emerald-300 transition">
+                            <div className="flex items-center space-x-2.5">
+                              <div className="w-8 h-8 rounded-full bg-emerald-700 text-white flex items-center justify-center font-bold font-mono">
+                                {m.number ? `#${m.number}` : m.position}
+                              </div>
+                              <div>
+                                <div className="font-bold text-slate-800 text-sm">{m.name}</div>
+                                <div className="text-[11px] text-slate-500 font-medium">
+                                  {m.grade} / {m.position === 'MG' ? 'マネージャー' : m.position}
+                                </div>
+                              </div>
+                            </div>
+
+                            <button
+                              onClick={() => handleDeleteMember(m.id)}
+                              className="text-slate-400 hover:text-rose-600 p-1.5 rounded transition"
+                              title="削除"
+                            >
+                              <Icon name="trash-2" className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
