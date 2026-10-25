@@ -308,7 +308,7 @@
           setInputPasscode('');
           setActiveTab('notes');
         } else {
-          alert('パスコードが正しくありません。（初期コード: 1234）');
+          alert('パスコードが正しくありません。');
         }
       };
 
@@ -1765,7 +1765,7 @@
                     <Icon name="lock" className="w-6 h-6" />
                   </div>
                   <h3 className="font-bold text-slate-800 text-base">監督・コーチ専用エリア</h3>
-                  <p className="text-xs text-slate-500">認証用パスコードを入力してください。（初期コード: 1234）</p>
+                  <p className="text-xs text-slate-500">認証用パスコードを入力してください。</p>
                 </div>
 
                 <form onSubmit={handleVerifyPasscode} className="space-y-3">
